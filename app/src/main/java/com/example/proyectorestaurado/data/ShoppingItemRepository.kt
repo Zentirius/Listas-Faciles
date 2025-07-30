@@ -4,8 +4,10 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.asLiveData
 import com.example.proyectorestaurado.data.ShoppingItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 class ShoppingItemRepository(private val shoppingItemDao: ShoppingItemDao) {
     private val TAG = "ShoppingRepository"
@@ -83,14 +85,8 @@ class ShoppingItemRepository(private val shoppingItemDao: ShoppingItemDao) {
     }
     
     suspend fun updateItem(item: ShoppingItem) {
-        try {
-            Log.d(TAG, "Actualizando item: ${item.id} - ${item.name}, isChecked: ${item.isChecked}")
+        withContext(Dispatchers.IO) {
             shoppingItemDao.updateItem(item)
-            Log.d(TAG, "Item actualizado correctamente")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error al actualizar item: ${e.message}")
-            Log.e(TAG, "StackTrace: ${e.stackTraceToString()}")
-            throw e
         }
     }
     

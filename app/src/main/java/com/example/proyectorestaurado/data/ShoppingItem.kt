@@ -8,42 +8,41 @@ import kotlinx.parcelize.Parcelize
 @Parcelize
 @Entity(tableName = "shopping_items")
 data class ShoppingItem(
-    @PrimaryKey
-    val id: Long = System.currentTimeMillis(),
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0L,
     var name: String,
-    var brand: String? = null, // Nueva propiedad para marca
-    var notes: String? = null, // Campo para notas adicionales
+    var quantity: Double = 1.0,
+    var unit: String = "u",
     var isChecked: Boolean = false,
     var timestamp: Long = System.currentTimeMillis(),
+    var brand: String? = null,
+    var notes: String? = null,
     var category: String = "General",
-    var priceRange: PriceRange = PriceRange.NORMAL,
-    var quantity: Double? = null,
-    var unit: String? = null
+    var priceRange: PriceRange = PriceRange.NORMAL
 ) : Parcelable {
-
 
     // Method to create a copy of the item with updated values
     fun copyWith(
         name: String = this.name,
+        quantity: Double = this.quantity,
+        unit: String = this.unit,
+        isChecked: Boolean = this.isChecked,
         brand: String? = this.brand,
         notes: String? = this.notes,
-        isChecked: Boolean = this.isChecked,
         category: String = this.category,
-        priceRange: PriceRange = this.priceRange,
-        quantity: Double? = this.quantity,
-        unit: String? = this.unit
+        priceRange: PriceRange = this.priceRange
     ): ShoppingItem {
         return ShoppingItem(
             id = this.id,
+            timestamp = this.timestamp, // Keep original timestamp
             name = name,
+            quantity = quantity,
+            unit = unit,
+            isChecked = isChecked,
             brand = brand,
             notes = notes,
-            isChecked = isChecked,
-            timestamp = this.timestamp, // Keep original timestamp unless explicitly changed
             category = category,
-            priceRange = priceRange,
-            quantity = quantity,
-            unit = unit
+            priceRange = priceRange
         )
     }
 }

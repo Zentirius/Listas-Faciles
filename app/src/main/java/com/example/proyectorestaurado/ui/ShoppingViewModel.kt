@@ -6,13 +6,16 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.viewModelScope
 import com.example.proyectorestaurado.data.AppDatabase
+import android.graphics.Bitmap
 import com.example.proyectorestaurado.data.ShoppingItemRepository
 import com.example.proyectorestaurado.data.ShoppingItem
+import com.example.proyectorestaurado.utils.OCRProcessor
 import kotlinx.coroutines.launch
 
 class ShoppingViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: ShoppingItemRepository
     val allItems: LiveData<List<ShoppingItem>>
+    private val ocrProcessor = OCRProcessor()
     
     init {
         try {
@@ -147,5 +150,27 @@ class ShoppingViewModel(application: Application) : AndroidViewModel(application
             Log.e("ShoppingViewModel", "Error al eliminar todos los items: ${e.message}")
             Log.e("ShoppingViewModel", "StackTrace: ${e.stackTraceToString()}")
         }
+    }
+
+    fun processImageWithOCR(bitmap: Bitmap) = viewModelScope.launch {
+        try {
+            Log.d("ShoppingViewModel", "Procesando imagen con OCR")
+            val items = ocrProcessor.processImage(bitmap)
+            if (items.isNotEmpty()) {
+                Log.d("ShoppingViewModel", "OCR detectó ${items.size} items. Insertando en la base de datos.")
+                repository.insertItems(items)
+            } else {
+                Log.d("ShoppingViewModel", "OCR no detectó items.")
+            }
+        } catch (e: Exception) {
+            Log.e("ShoppingViewModel", "Error al procesar imagen con OCR: ${e.message}")
+            Log.e("ShoppingViewModel", "StackTrace: ${e.stackTraceToString()}")
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        ocrProcessor.cleanup()
+        Log.d("ShoppingViewModel", "ViewModel cleared and OCR resources released.")
     }
 }

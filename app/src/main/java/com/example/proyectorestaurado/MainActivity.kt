@@ -1,5 +1,9 @@
 package com.example.proyectorestaurado
 
+import com.example.proyectorestaurado.utils.TestRunner
+
+import com.example.proyectorestaurado.data.PriceRange
+
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -19,14 +23,15 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.proyectorestaurado.CameraActivity
 import com.example.proyectorestaurado.data.ShoppingItem
 import com.example.proyectorestaurado.databinding.ActivityMainBinding
+import com.example.proyectorestaurado.utils.ParseMode
 import com.example.proyectorestaurado.ui.ShoppingViewModel
 import com.example.proyectorestaurado.utils.ParsedItem
 import com.example.proyectorestaurado.utils.QuantityParser
 import com.google.android.gms.ads.MobileAds
 
 class MainActivity : AppCompatActivity() {
+    private var currentParseMode: ParseMode = ParseMode.SUPERMERCADO // 1. Cambiado a SUPERMERCADO por defecto
     private lateinit var binding: ActivityMainBinding
-    private val quantityParser = QuantityParser()
 
     private val ocrResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -39,22 +44,19 @@ class MainActivity : AppCompatActivity() {
 
             parsedItems?.let {
                 if (it.isNotEmpty()) {
-                    val shoppingItems = it.mapNotNull { parsed ->
-                        if (parsed.name.isNotBlank()) {
-                            ShoppingItem(
-                                name = parsed.name,
-                                quantity = parsed.quantity,
-                                unit = parsed.unit,
-                                brand = parsed.brand,
-                                notes = parsed.notes,
-                                priceRange = parsed.priceRange,
-                                category = currentCategory,
-                                isChecked = false
-                            )
-                        } else null
+                    it.forEach { parsedItem ->
+                        val newItem = ShoppingItem(
+                            name = parsedItem.name,
+                            quantity = parsedItem.quantity ?: 1.0,
+                            unit = parsedItem.unit ?: "u",
+                            brand = parsedItem.brand,
+                            notes = parsedItem.notes,
+                            category = parsedItem.category ?: "General",
+                            priceRange = parsedItem.priceRange ?: PriceRange.NORMAL
+                        )
+                        viewModel.addItem(newItem)
                     }
-                    viewModel.addItems(shoppingItems)
-                    Toast.makeText(this, "${shoppingItems.size} items añadidos desde el escaneo.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "${it.size} items añadidos desde el escaneo.", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -73,6 +75,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -81,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         setupDeleteCheckedButton()
         setupDeleteAllButton()
         setupCategorySpinner()
+        setupModeRadioGroup() // 2. Cambiado de setupModeSwitch
         setupSearch()
         setupOcrButton()
         observeItems()
@@ -114,45 +118,35 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupAddButton() {
         binding.buttonAdd.setOnClickListener {
-            val inputText = binding.editTextItem.text.toString()
-            if (inputText.isNotBlank()) {
-                val lines = inputText.split(Regex("[\n]+"))
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
+            val text = binding.editTextItem.text.toString()
+            if (text.isNotBlank()) {
+                try {
+                    val parsedItems: List<ParsedItem> = QuantityParser.parseMultipleItems(text, currentParseMode)
 
-                val itemsToAdd = mutableListOf<ShoppingItem>()
-                
-                lines.forEach { line ->
-                    Log.d("MainActivity", "Procesando línea: '$line'")
-                    // Usar parseMultipleItems para detectar múltiples productos en una línea
-                    val parsedItems = quantityParser.parseMultipleItems(line)
-                    Log.d("MainActivity", "parseMultipleItems devolvió ${parsedItems.size} productos")
-                    parsedItems.forEachIndexed { index, parsed ->
-                        Log.d("MainActivity", "Producto ${index + 1}: '${parsed.name}' (${parsed.quantity} ${parsed.unit ?: "u"})")
-                        itemsToAdd.add(
+                    if (parsedItems.isNotEmpty()) {
+                        val shoppingItems = parsedItems.map { parsedItem ->
                             ShoppingItem(
-                                name = parsed.name,
-                                quantity = parsed.quantity,
-                                unit = parsed.unit,
-                                brand = parsed.brand,
-                                notes = parsed.notes,
-                                priceRange = parsed.priceRange,
-                                category = currentCategory,
-                                isChecked = false
+                                name = parsedItem.name,
+                                quantity = parsedItem.quantity ?: 1.0,
+                                unit = parsedItem.unit ?: "u",
+                                brand = parsedItem.brand,
+                                notes = parsedItem.notes,
+                                category = parsedItem.category ?: currentCategory,
+                                priceRange = parsedItem.priceRange ?: PriceRange.NORMAL
                             )
-                        )
+                        }
+                        viewModel.addItems(shoppingItems)
+                        Toast.makeText(this, "${shoppingItems.size} items añadidos", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this, "No se pudieron parsear los items", Toast.LENGTH_SHORT).show()
                     }
-                }
 
-                if (itemsToAdd.isNotEmpty()) {
-                    viewModel.addItems(itemsToAdd)
                     binding.editTextItem.text?.clear()
-                    // Ocultar teclado
                     val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                     imm.hideSoftInputFromWindow(binding.editTextItem.windowToken, 0)
-                    Toast.makeText(this, "${itemsToAdd.size} productos añadidos.", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "No se pudo procesar la entrada.", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Error al parsear y añadir item(s): ${e.message}", e)
+                    Toast.makeText(this, "Error al procesar la entrada", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -186,11 +180,20 @@ class MainActivity : AppCompatActivity() {
         val editTextName = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.editTextName)
         val editTextQuantity = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.editTextQuantity)
         val editTextUnit = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.editTextUnit)
-
+        val editTextBrand = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.editTextBrand)
+        val editTextNotes = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.editTextNotes)
+        val spinnerPriceRange = dialogView.findViewById<androidx.appcompat.widget.AppCompatSpinner>(R.id.spinnerPriceRange)
+    
         editTextName.setText(item.name)
         editTextQuantity.setText(item.quantity?.toString() ?: "")
         editTextUnit.setText(item.unit ?: "")
-
+        editTextBrand.setText(item.brand ?: "")
+        editTextNotes.setText(item.notes ?: "")
+        // Selecciona el rango de precio actual si existe
+        val priceRanges = resources.getStringArray(R.array.price_ranges)
+        val priceIndex = priceRanges.indexOf(item.priceRange ?: "")
+        if (priceIndex >= 0) spinnerPriceRange.setSelection(priceIndex)
+    
         AlertDialog.Builder(this)
             .setTitle("Editar Artículo")
             .setView(dialogView)
@@ -198,12 +201,24 @@ class MainActivity : AppCompatActivity() {
                 val newName = editTextName.text.toString()
                 val newQuantity = editTextQuantity.text.toString().toDoubleOrNull()
                 val newUnit = editTextUnit.text.toString()
+                val newBrand = editTextBrand.text.toString()
+                val newNotes = editTextNotes.text.toString()
+                val selectedPriceRangeString = spinnerPriceRange.selectedItem?.toString()
+                val newPriceRange = when (selectedPriceRangeString) {
+                    "Económico" -> PriceRange.ECONOMY
+                    "Normal" -> PriceRange.NORMAL
+                    "Premium" -> PriceRange.PREMIUM
+                    else -> item.priceRange // Keep original if something goes wrong
+                }
 
                 if (newName.isNotBlank()) {
                     val updatedItem = item.copy(
                         name = newName,
-                        quantity = newQuantity,
-                        unit = if (newUnit.isNotBlank()) newUnit else null
+                        quantity = newQuantity ?: 1.0, // Ensure non-null
+                        unit = newUnit,
+                        brand = newBrand.ifBlank { null },
+                        notes = newNotes.ifBlank { null },
+                        priceRange = newPriceRange
                     )
                     viewModel.updateItem(updatedItem)
                 }
@@ -277,7 +292,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateVisibility(isEmpty: Boolean) {
-        binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
-        binding.emptyView.visibility = if (isEmpty) View.VISIBLE else View.GONE
+    binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+    binding.emptyView.visibility = if (isEmpty) View.VISIBLE else View.GONE
+}
+    // 3. Reemplazar setupModeSwitch con esto
+    private fun setupModeRadioGroup() {
+        binding.modeRadioGroup.setOnCheckedChangeListener { _, checkedId ->
+            currentParseMode = when (checkedId) {
+                R.id.radioSupermercado -> ParseMode.SUPERMERCADO
+                R.id.radioLibre -> ParseMode.LIBRE
+                else -> ParseMode.SUPERMERCADO
+            }
+        }
     }
+
+
 }

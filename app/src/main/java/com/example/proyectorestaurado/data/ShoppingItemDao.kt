@@ -6,13 +6,13 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ShoppingItemDao {
-        @Query("SELECT * FROM shopping_items ORDER BY priceRange DESC, timestamp DESC")
+        @Query("SELECT * FROM shopping_items ORDER BY id DESC")
     fun getAllItems(): Flow<List<ShoppingItem>>
 
-        @Query("SELECT * FROM shopping_items WHERE category = :category ORDER BY priceRange DESC, timestamp DESC")
+        @Query("SELECT * FROM shopping_items WHERE category = :category ORDER BY id DESC")
     fun getItemsByCategory(category: String): Flow<List<ShoppingItem>>
 
-        @Query("SELECT * FROM shopping_items WHERE name LIKE '%' || :query || '%' ORDER BY priceRange DESC, timestamp DESC")
+        @Query("SELECT * FROM shopping_items WHERE name LIKE '%' || :query || '%' ORDER BY id DESC")
     fun searchItems(query: String): Flow<List<ShoppingItem>>
 
     @Query("SELECT * FROM shopping_items WHERE isChecked = 1")

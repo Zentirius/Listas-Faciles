@@ -11,4 +11,9 @@
     <string name="scan_shopping_list">Escanear lista de compras</string>
     <string name="price_range_indicator">Indicador de rango de precios</string>
     <string name="edit_product">Editar producto</string>
+    <string-array name="price_ranges">
+        <item>Económico</item>
+        <item>Normal</item>
+        <item>Premium</item>
+    </string-array>
 </resources>

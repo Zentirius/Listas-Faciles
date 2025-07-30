@@ -110,8 +110,7 @@ class CameraActivity : AppCompatActivity() {
 
                     if (parsedItems.isNotEmpty()) {
                         val resultIntent = Intent().apply {
-                            val itemsAsList = ArrayList(parsedItems.map { it as ParsedItem? })
-                            putExtra("ocr_results_list", itemsAsList)
+                            putExtra("ocr_results_list", ArrayList(parsedItems))
                         }
                         setResult(RESULT_OK, resultIntent)
                         finish()
@@ -213,3 +212,5 @@ class CameraActivity : AppCompatActivity() {
         const val REQUEST_CODE = 123
     }
 }
+
+// Remove the erroneous line at the end of the file
