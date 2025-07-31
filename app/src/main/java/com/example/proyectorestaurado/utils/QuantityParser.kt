@@ -4,6 +4,8 @@ import android.os.Parcelable
 import com.example.proyectorestaurado.data.PriceRange
 import kotlinx.parcelize.Parcelize
 import com.example.proyectorestaurado.utils.ParseMode
+import com.example.proyectorestaurado.utils.BrandNoteUtils
+import com.example.proyectorestaurado.utils.IrrelevantItemsUtils.irrelevantItems
 
 @Parcelize
 data class ParsedItem(
@@ -25,12 +27,7 @@ object QuantityParser {
         "media" to 0.5, "docena" to 12.0
     )
 
-    private var unitSynonyms: Map<String, List<String>> = mapOf(
-        "litro" to listOf("litro", "litros", "lt", "lts"),
-        "kg" to listOf("kilo", "kilos", "kilogramo", "kilogramos", "kg"),
-        "gr" to listOf("g", "gr", "grs", "gramo", "gramos"),
-        "u" to listOf("unidad", "unidades", "u"),
-        "paquete" to listOf("paquete", "paquetes", "pq"),
+    private val unitSynonyms = UnitUtils.unitSynonyms + mapOf(
         "lata" to listOf("lata", "latas"),
         "rollo" to listOf("rollo", "rollos"),
         "bolsa" to listOf("bolsa", "bolsas"),
@@ -47,7 +44,12 @@ object QuantityParser {
 
     private val brandOrKeywords = setOf("o", "ó", "u", "o el", "o la")
     private val noteKeywords = listOf("barata", "en oferta", "preguntar", "no muy cara", "más barato", "barato", "económico", "o el más barato", "o el económico")
-    private val irrelevantItems = setOf("zapatos", "ropa", "pantalón", "pantalones", "camisa", "camisas", "vestido", "vestidos")
+
+    private val ignoreKeywords = setOf(
+        "cuál", "cual", "tipo", "no son cantidades", "orden", "de lista", "/2", "/", "frutos del", "no", "son", "cantidades", "es", "orden", "de", "lista", "m", "y", "car", "es mej", "r",
+        "zapatos", "ropa", "pantalón", "pantalones", "camisa", "camisas", "vestido", "vestidos"
+    )
+
     private val singularizeExceptions = mapOf(
         "lentes" to "lentes",
         "francesa" to "francesa",
@@ -59,16 +61,14 @@ object QuantityParser {
 
     fun parseMultipleItems(originalInput: String, mode: ParseMode = ParseMode.LIBRE): List<ParsedItem> {
         if (originalInput.isBlank()) return emptyList()
-
         val correctedText = applyOcrCorrections(originalInput)
+
         val itemSeparators = Regex("\\n|(?<![0-9])[.,;](?![0-9])|\\s-\\s")
         val initialItems = correctedText.split(itemSeparators).map { it.trim() }.filter { it.isNotBlank() }
-
         val parsedItems = initialItems.flatMap { item ->
             val subItems = splitSubItems(item)
             subItems.mapNotNull { subItem -> parseItem(subItem, mode) }
         }
-
         return groupItems(parsedItems)
     }
 
@@ -153,7 +153,7 @@ object QuantityParser {
         if (numberCount > 1) {
             val startsWithNumber = item.trim().matches(Regex("^\\d.*"))
             val splitRegex = if (startsWithNumber) {
-                Regex("""(?<=[a-zA-Zñáéíóúü])\\s+(?=\\d)""") // "item 1 item 2"
+                Regex("""(?<=[a-zA-Zñ])(?=\\d)""") // "item 1 item 2"
             } else {
                 Regex("""(?<=\\d)\\s+(?=[a-zA-Zñáéíóúü(])""") // "1 item 2 item"
             }
@@ -270,10 +270,10 @@ object QuantityParser {
         var extractedNotes: String? = null
 
         // Nueva lógica avanzada: buscar 'marca' y tomar todo hasta la próxima coma, punto y coma, salto de línea o final
-        val brandAdvancedRegex = Regex("""\bmarca(?:s)?[, ]*([^,;\.\n]*)""", RegexOption.IGNORE_CASE)
+        val brandAdvancedRegex = Regex("""\bmarca(?:s)?[, ]*([^,;\.\n]*)_""", RegexOption.IGNORE_CASE)
         brandAdvancedRegex.find(remainingInput)?.let {
             val brandText = it.groupValues[1].trim()
-            val (brands, notes) = separateBrandsAndNotes(brandText)
+            val (brands, notes) = BrandNoteUtils.separateBrandsAndNotes(brandText)
             // Eliminar el bloque completo de marca de la cadena
             remainingInput = Regex(
                 """\bmarca(?:s)?[, ]*${Regex.escape(brandText)}""",
@@ -288,7 +288,7 @@ object QuantityParser {
         val orIndex = words.indexOfFirst { it in brandOrKeywords }
         if (orIndex > 0 && orIndex < words.size - 1) {
             val potentialBrand = words.subList(orIndex - 1, words.size).joinToString(" ")
-            val (brands, notes) = separateBrandsAndNotes(potentialBrand)
+            val (brands, notes) = BrandNoteUtils.separateBrandsAndNotes(potentialBrand)
             val name = words.subList(0, orIndex - 1).joinToString(" ")
             extractedNotes = notes.joinToString(", ").ifEmpty { null }
             return Triple(brands.joinToString(" / "), name.trim(), extractedNotes)
@@ -304,7 +304,7 @@ object QuantityParser {
             // Suponemos que la última palabra que no es una nota es la marca
             val lastWord = words.last()
             if (!noteKeywords.any { it.equals(lastWord, ignoreCase = true)}) {
-                val (brands, notes) = separateBrandsAndNotes(words.takeLast(2).joinToString(" "))
+                val (brands, notes) = BrandNoteUtils.separateBrandsAndNotes(words.takeLast(2).joinToString(" "))
                 if (brands.isNotEmpty()) {
                     val name = words.dropLast(2).joinToString(" ")
                     extractedNotes = notes.joinToString(", ").ifEmpty { null }
@@ -316,159 +316,121 @@ object QuantityParser {
         return Triple(null, remainingInput.trim(), null)
     }
 
-    private fun separateBrandsAndNotes(brandText: String): Pair<List<String>, List<String>> {
-        val notePhrases = listOf("o el más barato", "o el económico", "el más barato", "el económico", "o el más económico", "o el más barato posible")
-        val noteCandidates = mutableListOf<String>()
-        var cleanedBrandText = brandText
-        // Primero extrae frases completas a notes
-        notePhrases.forEach { phrase ->
-            val idx = cleanedBrandText.indexOf(phrase, ignoreCase = true)
-            if (idx != -1) {
-                noteCandidates.add(phrase.trim())
-                cleanedBrandText = cleanedBrandText.replace(phrase, "", ignoreCase = true)
+    private fun extractQuantityAndUnit(input: String): Triple<Double?, String?, String> {
+        var remainingInput = input.lowercase()
+
+        // Casos especiales: docena y media docena
+        if (remainingInput.contains("media docena")) {
+            val name = remainingInput.replace("media docena", "").trim()
+            return Triple(6.0, "u", name)
+        }
+        if (remainingInput.contains("docena")) {
+            val name = remainingInput.replace("docena", "").trim()
+            return Triple(12.0, "u", name)
+        }
+
+        // Cantidad y unidad pegadas (ej: 750ml, 1malla, 12servilletas)
+        val quantityUnitTogetherRegex = Regex("""(\d+(?:[.,]\d+)?)([a-zA-Zñáéíóúü]+)""")
+        quantityUnitTogetherRegex.find(remainingInput)?.let {
+            val quantityStr = it.groupValues[1].replace(',', '.')
+            val quantity = quantityStr.toDoubleOrNull()
+            val unitStr = it.groupValues[2].lowercase()
+            val unit = unitSynonyms.entries.find { (_, synonyms) -> unitStr in synonyms }?.key ?: unitStr
+            val name = remainingInput.replace(it.value, "").trim()
+            return Triple(quantity, unit, name)
+        }
+
+        // Número separado de unidad (ej: 2 kg)
+        val quantityWithUnitRegex = Regex("""(\d+(?:[.,]\d+)?)\s*(${unitSynonyms.values.flatten().joinToString("|")})\b""", RegexOption.IGNORE_CASE)
+        quantityWithUnitRegex.find(remainingInput)?.let {
+            val quantityStr = it.groupValues[1].replace(',', '.')
+            val quantity = quantityStr.toDoubleOrNull()
+            val unitStr = it.groupValues[2].lowercase()
+            val unit = unitSynonyms.entries.find { (_, synonyms) -> unitStr in synonyms }?.key
+            val name = remainingInput.replace(it.value, "").trim()
+            return Triple(quantity, unit, name)
+        }
+
+        // Cantidad al final (ej: 'jabón líquido 2')
+        val quantityAtEndRegex = Regex("""(.+?)\s+(\d+(?:[.,]\d+)?)$""", RegexOption.IGNORE_CASE)
+        quantityAtEndRegex.find(remainingInput)?.let {
+            val name = it.groupValues[1].trim()
+            val quantityStr = it.groupValues[2].replace(',', '.')
+            val quantity = quantityStr.toDoubleOrNull()
+            val (unit, finalName) = UnitUtils.findUnitInString(name)
+            return Triple(quantity, unit, finalName)
+        }
+
+        // Primer número que aparezca
+        val quantityRegex = Regex("""\d+[.,]?\d*""")
+        quantityRegex.find(remainingInput)?.let {
+            val quantityStr = it.groupValues[0].replace(',', '.')
+            val quantity = quantityStr.toDoubleOrNull()
+            val tempInput = remainingInput.replaceFirst(quantityStr, "").trim()
+            val (unit, name) = UnitUtils.findUnitInString(tempInput)
+            return Triple(quantity, unit, name)
+        }
+
+        return Triple(null, null, remainingInput)
+    }
+
+    private fun singularize(word: String): String {
+        singularizeExceptions[word.lowercase()]?.let {
+            return it
+        }
+        return when {
+            word.endsWith("es", ignoreCase = true) &&
+                !word.endsWith("ses", ignoreCase = true) &&
+                !word.endsWith("ces", ignoreCase = true) -> word.dropLast(2)
+            word.endsWith("s", ignoreCase = true) &&
+                word.length > 3 &&
+                !singularizeExceptions.containsKey(word.lowercase()) &&
+                !word.endsWith("es", ignoreCase = true) -> word.dropLast(1)
+            else -> word
+        }
+    }
+
+    private fun cleanProductName(name: String): String {
+        val irrelevantWords = listOf("de", "el", "la", "los", "las", "un", "una", "unos", "unas", "con", "en", "a", "para", "talla", "sin", "con fluor")
+        var cleanedName = name.trim()
+        irrelevantWords.forEach { cleanedName = cleanedName.replace(Regex("""\b$it\b""", RegexOption.IGNORE_CASE), "") }
+        cleanedName = cleanedName.replace(Regex("""[^a-zA-Z0-9\sñáéíóúü/\.-]"""), " ").replace(Regex("""\s{2,}"""), " ").trim()
+        return singularize(cleanedName)
+         return singularize(cleanedName)
+        }
+
+        private fun inferPriceRange(notes: String?): PriceRange? {
+            if (notes == null) return null
+            val economyKeywords = listOf("barato", "económico", "oferta", "barata")
+            return if (economyKeywords.any { notes.contains(it, ignoreCase = true) }) {
+                PriceRange.ECONOMY
+            } else {
+                null
             }
         }
-        // Luego divide el resto en posibles marcas
-        // Primero extrae frases completas a notes
-        val brandCandidates = cleanedBrandText.split("/", "o", "u").map { it.trim() }.filter { it.isNotEmpty() }
-            .filter { it.isNotBlank() && !notePhrases.any { phrase -> it.equals(phrase, ignoreCase = true) } }
-        // Si aún quedan palabras tipo 'barato', 'económico', pásalas a notes
-        val (brands, notesExtra) = brandCandidates.partition { part ->
-            val lower = part.lowercase()
-            !listOf("barato", "económico", "oferta", "preguntar", "mejor", "más barato", "económica", "económico", "no muy cara").any { lower.contains(it) }
-        }
-        return Pair(brands, noteCandidates + notesExtra.filter { it.isNotBlank() })
-    }
 
-private fun extractQuantityAndUnit(input: String): Triple<Double?, String?, String> {
-    var remainingInput = input.lowercase()
-
-    // Casos especiales: docena y media docena
-    if (remainingInput.contains("media docena")) {
-        val name = remainingInput.replace("media docena", "").trim()
-        return Triple(6.0, "u", name)
-    }
-    if (remainingInput.contains("docena")) {
-        val name = remainingInput.replace("docena", "").trim()
-        return Triple(12.0, "u", name)
-    }
-
-    // Cantidad y unidad pegadas (ej: 750ml, 1malla, 12servilletas)
-    val quantityUnitTogetherRegex = Regex("""(\d+(?:[.,]\d+)?)([a-zA-Zñáéíóúü]+)""")
-    quantityUnitTogetherRegex.find(remainingInput)?.let {
-        val quantityStr = it.groupValues[1].replace(',', '.')
-        val quantity = quantityStr.toDoubleOrNull()
-        val unitStr = it.groupValues[2].lowercase()
-        val unit = unitSynonyms.entries.find { (_, synonyms) -> unitStr in synonyms }?.key ?: unitStr
-        val name = remainingInput.replace(it.value, "").trim()
-        return Triple(quantity, unit, name)
-    }
-
-    // Número separado de unidad (ej: 2 kg)
-    val quantityWithUnitRegex = Regex("""(\d+(?:[.,]\d+)?)\s*(${unitSynonyms.values.flatten().joinToString("|")})\b""", RegexOption.IGNORE_CASE)
-    quantityWithUnitRegex.find(remainingInput)?.let {
-        val quantityStr = it.groupValues[1].replace(',', '.')
-        val quantity = quantityStr.toDoubleOrNull()
-        val unitStr = it.groupValues[2].lowercase()
-        val unit = unitSynonyms.entries.find { (_, synonyms) -> unitStr in synonyms }?.key
-        val name = remainingInput.replace(it.value, "").trim()
-        return Triple(quantity, unit, name)
-    }
-
-    // Cantidad al final (ej: 'jabón líquido 2')
-    val quantityAtEndRegex = Regex("""(.+?)\s+(\d+(?:[.,]\d+)?)$""", RegexOption.IGNORE_CASE)
-    quantityAtEndRegex.find(remainingInput)?.let {
-        val name = it.groupValues[1].trim()
-        val quantityStr = it.groupValues[2].replace(',', '.')
-        val quantity = quantityStr.toDoubleOrNull()
-        val (unit, finalName) = findUnitInString(name)
-        return Triple(quantity, unit, finalName)
-    }
-
-    // Primer número que aparezca
-    val quantityRegex = Regex("""\d+[.,]?\d*""")
-    quantityRegex.find(remainingInput)?.let {
-        val quantityStr = it.groupValues[0].replace(',', '.')
-        val quantity = quantityStr.toDoubleOrNull()
-        val tempInput = remainingInput.replaceFirst(quantityStr, "").trim()
-        val (unit, name) = findUnitInString(tempInput)
-        return Triple(quantity, unit, name)
-    }
-
-    return Triple(null, null, remainingInput)
-}
-
-private fun singularize(word: String): String {
-    singularizeExceptions[word.lowercase()]?.let {
-        return it
-    }
-    return when {
-        word.endsWith("es", ignoreCase = true) &&
-            !word.endsWith("ses", ignoreCase = true) &&
-            !word.endsWith("ces", ignoreCase = true) -> word.dropLast(2)
-        word.endsWith("s", ignoreCase = true) &&
-            word.length > 3 &&
-            !singularizeExceptions.containsKey(word.lowercase()) &&
-            !word.endsWith("es", ignoreCase = true) -> word.dropLast(1)
-        else -> word
-    }
-}
-
-private fun cleanProductName(name: String): String {
-    val irrelevantWords = listOf("de", "el", "la", "los", "las", "un", "una", "unos", "unas", "con", "en", "a", "para", "talla", "sin", "con fluor")
-    var cleanedName = name.trim()
-    irrelevantWords.forEach { cleanedName = cleanedName.replace(Regex("""\b$it\b""", RegexOption.IGNORE_CASE), "") }
-    cleanedName = cleanedName.replace(Regex("""[^a-zA-Z0-9\sñáéíóúü/\.-]"""), " ").replace(Regex("""\s{2,}"""), " ").trim()
-    return singularize(cleanedName)
-     return singularize(cleanedName)
-    }
-
-    private fun inferPriceRange(notes: String?): PriceRange? {
-        if (notes == null) return null
-        val economyKeywords = listOf("barato", "económico", "oferta", "barata")
-        return if (economyKeywords.any { notes.contains(it, ignoreCase = true) }) {
-            PriceRange.ECONOMY
-        } else {
-            null
-        }
-    }
-
-    private fun inferCategory(productName: String, brand: String?, notes: String?): String? {
-        val textToSearch = listOfNotNull(productName, brand, notes).joinToString(" ").lowercase()
-        for ((category, keywords) in categoryKeywords) {
-            if (keywords.any { keyword -> textToSearch.contains(keyword, ignoreCase = true) }) {
-                return category
-            }
-        }
-        return null
-    }
-
-    private val categoryKeywords: Map<String, List<String>> = mapOf(
-        "Frutas y Verduras" to listOf("tomate", "zanahoria", "papa", "sandía", "manzana", "plátano", "lechuga", "francesa", "albahaca", "choclo", "salmon"),
-        "Carnes" to listOf("carne molida", "pollo", "bistec"),
-        "Lácteos y Huevos" to listOf("leche", "queso", "yogur", "huevos", "mantequilla", "yemita"),
-        "Panadería y Dulces" to listOf("pan", "galletas", "pastel", "leche asada"),
-        "Despensa" to listOf("arroz", "fideos", "aceite", "azúcar", "sal", "tallarines", "atún", "jugo de naranja", "jugo naranja"),
-        "Bebidas" to listOf("gaseosa", "jugo", "agua"),
-        "Cuidado Personal" to listOf("champú", "jabón", "pasta de dientes", "cepillos", "desodorante", "calcetines", "focos", "pilas"),
-        "Limpieza" to listOf("detergente", "cloro", "lavalozas", "papel higiénico", "esponjas", "servilletas")
-    )
-
-    // Extrae la unidad y el nombre limpio desde un string
-    private fun findUnitInString(input: String): Pair<String?, String> {
-        val trimmed = input.trim()
-        if (trimmed.isEmpty()) return Pair(null, "")
-        // Busca la primera coincidencia de unidad conocida
-        for ((canonical, synonyms) in unitSynonyms) {
-            for (syn in synonyms) {
-                val regex = Regex("""\b$syn\b""", RegexOption.IGNORE_CASE)
-                val match = regex.find(trimmed)
-                if (match != null) {
-                    val name = trimmed.replace(regex, "").replace("  ", " ").trim()
-                    return Pair(canonical, name)
+        private fun inferCategory(productName: String, brand: String?, notes: String?): String? {
+            val textToSearch = listOfNotNull(productName, brand, notes).joinToString(" ").lowercase()
+            for ((category, keywords) in categoryKeywords) {
+                if (keywords.any { keyword -> textToSearch.contains(keyword, ignoreCase = true) }) {
+                    return category
                 }
             }
+            return null
         }
-        return Pair(null, trimmed)
+
+        private val categoryKeywords = mapOf(
+            "Frutas y Verduras" to listOf("tomate", "zanahoria", "papa", "sandía", "manzana", "plátano", "lechuga", "francesa", "albahaca", "choclo", "salmon"),
+            "Carnes" to listOf("carne molida", "pollo", "bistec"),
+            "Lácteos y Huevos" to listOf("leche", "queso", "yogur", "huevos", "mantequilla", "yemita"),
+            "Panadería y Dulces" to listOf("pan", "galletas", "pastel", "leche asada"),
+            "Despensa" to listOf("arroz", "fideos", "aceite", "azúcar", "sal", "tallarines", "atún", "jugo de naranja", "jugo naranja"),
+            "Bebidas" to listOf("gaseosa", "jugo", "agua"),
+            "Cuidado Personal" to listOf("champú", "jabón", "pasta de dientes", "cepillos", "desodorante", "calcetines", "focos", "pilas"),
+            "Limpieza" to listOf("detergente", "cloro", "lavalozas", "papel higiénico", "esponjas", "servilletas")
+        )
+    
+        // Ahora importado desde UnitUtils:
+        // val result = UnitUtils.UnitUtils.findUnitInString(input)
+    
     }
-}
