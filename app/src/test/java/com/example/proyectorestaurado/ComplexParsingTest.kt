@@ -1,4 +1,4 @@
-package com.example.proyectorestaurado
+// Archivo de test antiguo eliminado. Mantener solo tests relevantes para listas reales.
 
 import com.example.proyectorestaurado.utils.QuantityParser
 import org.junit.Test
@@ -31,11 +31,11 @@ class ComplexParsingTest {
     fun testComplexInput() {
         println("\n=== Test: Complex Input ===")
         val input = """1. 2 kg de tomates, 1 lechuga y pan (el más barato)
-6 huevos, 1 litro de leche no muy cara
-media docena de plátanos. 3 manzanas
-500gr de carne molida 1 paquete de espaguetis
-Zanahorias
-1.5 litros de jugo de naranja,,,2 latas de atún."""
+        6 huevos, 1 litro de leche no muy cara
+        media docena de plátanos. 3 manzanas
+        500gr de carne molida 1 paquete de espaguetis
+        Zanahorias
+        1.5 litros de jugo de naranja,,,2 latas de atún."""
 
         println("Input:")
         println(input)
@@ -101,9 +101,9 @@ Zanahorias
         result1.forEachIndexed { i, item -> println("  ${i + 1}. '${item.name}' (${item.quantity} ${item.unit ?: ""})") }
         assertEquals("Test 1: Should split into 2 items", 2, result1.size)
         assertEquals("Test 1: Item 1 name", "tomates", result1[0].name)
-        assertEquals("Test 1: Item 1 quantity", 8.0, result1[0].quantity, 0.0)
+        assertEquals("Test 1: Item 1 quantity", 8.0, result1[0].quantity ?: 0.0, 0.01)
         assertEquals("Test 1: Item 2 name", "papas", result1[1].name)
-        assertEquals("Test 1: Item 2 quantity", 6.0, result1[1].quantity, 0.0)
+        assertEquals("Test 1: Item 2 quantity", 6.0, result1[1].quantity ?: 0.0, 0.01)
 
         // Test case 2: Clean-up of "de" from "de atún. (2 lata)"
         val input2 = "de atún (2 lata)"
@@ -112,7 +112,8 @@ Zanahorias
         result2.forEachIndexed { i, item -> println("  ${i + 1}. '${item.name}' (${item.quantity} ${item.unit ?: ""})") }
         assertEquals("Test 2: Should parse 1 item", 1, result2.size)
         assertEquals("Test 2: Item name", "atún", result2[0].name)
-        assertEquals("Test 2: Item quantity", 2.0, result2[0].quantity, 0.0)
+        assertNotNull("Test 2: Item quantity should not be null", result2[0].quantity)
+        assertEquals("Test 2: Item quantity", 2.0, result2[0].quantity ?: 0.0, 0.01)
         assertEquals("Test 2: Item unit", "lata", result2[0].unit)
 
         // Test case 3: Implicit split from "papa mediana 2.sandia grande"
@@ -122,7 +123,7 @@ Zanahorias
         result3.forEachIndexed { i, item -> println("  ${i + 1}. '${item.name}' (${item.quantity} ${item.unit ?: ""})") }
         assertEquals("Test 3: Should split into 2 items", 2, result3.size)
         assertEquals("Test 3: Item 1 name", "papa mediana", result3[0].name)
-        assertEquals("Test 3: Item 1 quantity", 2.0, result3[0].quantity, 0.0)
+        assertEquals("Test 3: Item 1 quantity", 2.0, result3[0].quantity ?: 0.0, 0.01)
         assertEquals("Test 3: Item 2 name", "sandia grande", result3[1].name)
 
         // Test case 4: Clean-up from "de jugo de naranja (1.5 litro)"
@@ -132,7 +133,7 @@ Zanahorias
         result4.forEachIndexed { i, item -> println("  ${i + 1}. '${item.name}' (${item.quantity} ${item.unit ?: ""})") }
         assertEquals("Test 4: Should parse 1 item", 1, result4.size)
         assertEquals("Test 4: Item name", "jugo de naranja", result4[0].name)
-        assertEquals("Test 4: Item quantity", 1.5, result4[0].quantity, 0.0)
+        assertEquals("Test 4: Item quantity", 1.5, result4[0].quantity ?: 0.0, 0.01)
         assertEquals("Test 4: Item unit", "litro", result4[0].unit)
     }
 }

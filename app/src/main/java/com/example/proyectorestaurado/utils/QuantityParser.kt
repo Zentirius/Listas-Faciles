@@ -56,114 +56,150 @@ object QuantityParser {
         "pilas" to "pilas",
         "servilletas" to "servilletas",
         "calcetines" to "calcetines",
-        "focos" to "focos"
+        "focos" to "focos",
+        // Frutas y verduras plurales y singulares
+        "tomates" to "tomates", "tomate" to "tomate",
+        "zanahorias" to "zanahorias", "zanahoria" to "zanahoria",
+        "papas" to "papas", "papa" to "papa",
+        "manzanas" to "manzanas", "manzana" to "manzana",
+        "plátanos" to "plátanos", "plátano" to "plátano",
+        "sandías" to "sandías", "sandía" to "sandía",
+        "lechugas" to "lechugas", "lechuga" to "lechuga",
+        "choclos" to "choclos", "choclo" to "choclo",
+        // Otros productos típicos
+        "cebollas" to "cebollas", "cebolla" to "cebolla",
+        "ajos" to "ajos", "ajo" to "ajo",
+        "pimentones" to "pimentones", "pimentón" to "pimentón",
+        "limones" to "limones", "limón" to "limón",
+        "naranjas" to "naranjas", "naranja" to "naranja",
+        "uvas" to "uvas", "uva" to "uva",
+        "peras" to "peras", "pera" to "pera"
     )
 
     fun parseMultipleItems(originalInput: String, mode: ParseMode = ParseMode.LIBRE): List<ParsedItem> {
         if (originalInput.isBlank()) return emptyList()
-        val correctedText = applyOcrCorrections(originalInput)
+        // Reemplazo de palabras-numero ANTES del split
+        val textWithNumbers = replaceWrittenNumbers(originalInput)
+        val correctedText = applyOcrCorrections(textWithNumbers)
 
-        val itemSeparators = Regex("\\n|(?<![0-9])[.,;](?![0-9])|\\s-\\s")
-        val initialItems = correctedText.split(itemSeparators).map { it.trim() }.filter { it.isNotBlank() }
-        val parsedItems = initialItems.flatMap { item ->
-            val subItems = splitSubItems(item)
-            subItems.mapNotNull { subItem -> parseItem(subItem, mode) }
+        // Split inteligente: por líneas si hay varias, por separadores si es una sola línea
+        val lineItems = correctedText.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val initialItems = if (lineItems.size > 3) {
+            lineItems
+        } else {
+            val itemSeparators = Regex("""\n|(?<![0-9])[.,;](?![0-9])|\s-\s|\s+y\s+|\s+na\s+|\s+o\s+|\s+u\s+|(?<=\d)\s+(?=\d)""")
+            correctedText.split(itemSeparators).map { it.trim() }.filter { it.isNotBlank() }
+        }
+        val palabrasNota = listOf("barato", "más barato", "en oferta", "económico", "preguntar", "oferta", "cual", "más", "barata", "barata en bandeja", "económica", "mejor", "ofertas", "precio", "en promoción", "en promo", "en descuento", "en liquidación")
+        val parsedItems = mutableListOf<ParsedItem>()
+        var ultimoProducto: ParsedItem? = null
+        for (item in initialItems) {
+            val palabras = item.lowercase().split(" ").map { it.trim() }
+            val esNota = palabras.all { TextNormalizationUtils.removeAccents(it) in palabrasNota.map { kw -> TextNormalizationUtils.removeAccents(kw) } } ||
+                TextNormalizationUtils.removeAccents(palabras.firstOrNull() ?: "") in palabrasNota.map { kw -> TextNormalizationUtils.removeAccents(kw) }
+            if (esNota && ultimoProducto != null) {
+                // Agregar como nota al producto anterior
+                val notaLimpia = com.example.proyectorestaurado.utils.BrandNoteUtils.cleanNote(item)
+                if (notaLimpia.isNotBlank()) {
+                    ultimoProducto = ultimoProducto.copy(
+                        notes = (ultimoProducto.notes ?: "") + if ((ultimoProducto.notes ?: "").isNotBlank()) ", " else "" + notaLimpia
+                    )
+                    parsedItems[parsedItems.size - 1] = ultimoProducto
+                }
+            } else {
+                val subItems = splitSubItems(item)
+                val nuevos = subItems.mapNotNull { subItem ->
+                val palabrasNota = listOf("mas", "más", "barato", "económico", "oferta", "preguntar", "mejor", "en oferta", "más barato", "económica", "no muy cara")
+                val subItemLimpio = subItem.trim().lowercase()
+                if (palabrasNota.any { TextNormalizationUtils.removeAccents(subItemLimpio) == TextNormalizationUtils.removeAccents(it) }) {
+                    // Si es solo una nota, agregar como nota al producto anterior
+                    if (ultimoProducto != null) {
+                        val notaLimpia = com.example.proyectorestaurado.utils.BrandNoteUtils.cleanNote(subItem)
+                        if (notaLimpia.isNotBlank()) {
+                            ultimoProducto = ultimoProducto.copy(
+                                notes = (ultimoProducto.notes ?: "") + if ((ultimoProducto.notes ?: "").isNotBlank()) ", " else "" + notaLimpia
+                            )
+                            parsedItems[parsedItems.size - 1] = ultimoProducto
+                        }
+                    }
+                    null // No crear producto
+                } else {
+                    parseItem(subItem, mode)
+                }
+            }
+                if (nuevos.isNotEmpty()) {
+                    parsedItems.addAll(nuevos)
+                    ultimoProducto = nuevos.last()
+                }
+            }
         }
         return groupItems(parsedItems)
     }
 
     private fun applyOcrCorrections(input: String): String {
-        var result = input
-        result = replaceWrittenNumbers(result)
-        result = normalizeMissingSpaces(result)
+    var result = input
+    result = replaceWrittenNumbers(result)
+    result = normalizeMissingSpaces(result)
 
-        result = result
-            .replace(Regex("(^|\\s)\\d+[.)](?=\\s*)"), " ") // Remove list numbering like "1. " or "2)"
-            .replace("tomat", "tomates", ignoreCase = true)
-            .replace(Regex("\\bna\\b", RegexOption.IGNORE_CASE), " y ")
-            .replace("g1", "gr", ignoreCase = true)
-            .replace("g ", "gr ", ignoreCase = true)
-            .replace("zanarorias", "zanahorias", ignoreCase = true)
-            .replace("Tomatees", "Tomates", ignoreCase = true)
-            .replace("R de", "1/2 de", ignoreCase = true)
-            .replace(Regex("""\bpastelera con albaca\b"""), "pastelera de choclo con albahaca")
-            .replace(Regex("""\b(crema dental|pasta dental)\b"""), "pasta de dientes")
-            .replace("shampoo", "champú", ignoreCase = true)
-            .replace("espaguetis", "tallarines", ignoreCase = true)
-            .replace("1malla", "1 malla", ignoreCase = true)
-            .replace("6sandias", "6 sandias", ignoreCase = true)
-            .replace("8tomates", "8 tomates", ignoreCase = true)
+    result = result
+        .replace(Regex("(^|\\s)\\d+[.)](?=\\s*)"), " ") // Remove list numbering like "1. " or "2)"
+        // Normalización robusta de plurales y OCR
+        .replace(Regex("tomateses|tomatees|tomate s|tomat(?!e)", RegexOption.IGNORE_CASE), "tomates")
+        .replace(Regex("zanahoriases|zanaorias|zanahoria s", RegexOption.IGNORE_CASE), "zanahorias")
+        .replace(Regex("limónes|limon s|limone s", RegexOption.IGNORE_CASE), "limones")
+        .replace(Regex("papas s|papa s", RegexOption.IGNORE_CASE), "papas")
+        .replace(Regex("cebollas s|cebolla s", RegexOption.IGNORE_CASE), "cebollas")
+        .replace(Regex("ajos s|ajo s", RegexOption.IGNORE_CASE), "ajos")
+        .replace(Regex("pimentones s|pimenton s", RegexOption.IGNORE_CASE), "pimentones")
+        .replace(Regex("naranjas s|naranja s", RegexOption.IGNORE_CASE), "naranjas")
+        .replace(Regex("uvas s|uva s", RegexOption.IGNORE_CASE), "uvas")
+        .replace(Regex("peras s|pera s", RegexOption.IGNORE_CASE), "peras")
+        .replace(Regex("sandias s|sandía s|sandías s", RegexOption.IGNORE_CASE), "sandías")
+        // Marcas compuestas conocidas
+        .replace(Regex("marca fruto del maipo", RegexOption.IGNORE_CASE), "marca fruto del maipo")
+        .replace(Regex("marca minuto verde", RegexOption.IGNORE_CASE), "marca minuto verde")
+        .replace(Regex("marca tres montes", RegexOption.IGNORE_CASE), "marca tres montes")
+        .replace(Regex("marca doña pepa", RegexOption.IGNORE_CASE), "marca doña pepa")
+        .replace(Regex("marca la serena", RegexOption.IGNORE_CASE), "marca la serena")
+        // Otros reemplazos útiles
+        .replace(Regex("""\b(crema dental|pasta dental)\b"""), "pasta de dientes")
+        .replace("shampoo", "champú", ignoreCase = true)
+        .replace("espaguetis", "tallarines", ignoreCase = true)
+        .replace("1malla", "1 malla", ignoreCase = true)
+        .replace("6sandias", "6 sandias", ignoreCase = true)
+        .replace("8tomates", "8 tomates", ignoreCase = true)
+        .replace("6 zanaorias", "6 zanahorias", ignoreCase = true)
+        .replace("leche asadas", "leche asada", ignoreCase = true)
             .replace("6 zanaorias", "6 zanahorias", ignoreCase = true)
             .replace("leche asadas", "leche asada", ignoreCase = true)
 
-        return result.lines()
-            .filterNot { line -> irrelevantItems.any { item -> line.contains(item, ignoreCase = true) } }
-            .joinToString("\n")
+        // NO filtrar líneas aquí, solo devolver el texto corregido
+        return result
     }
 
     private fun splitSubItems(item: String): List<String> {
-        // Reemplazo seguro: corta entre número y letra sin look-behind
-        val numberThenTextRegex = Regex("""(\d)\s+([a-zA-Zñáéíóúü(])""")
-        val textThenNumberRegex = Regex("""([a-zA-Zñáéíóúü])\s+(\d)""")
+        // Split por número seguido de texto, texto seguido de número, y conectores
+        val numberThenTextRegex = Regex("(\\d)\\s*([a-zA-Zñáéíóúü(])")
+        val textThenNumberRegex = Regex("([a-zA-Zñáéíóúü])\\s*(\\d)")
         var currentItem = item
         currentItem = currentItem.replace(numberThenTextRegex, "$1\n$2")
         currentItem = currentItem.replace(textThenNumberRegex, "$1\n$2")
 
+        // También split por " y ", " na ", " o ", " u " si están entre productos
+        val connectorRegex = Regex("(\\s+y\\s+|\\s+na\\s+|\\s+o\\s+|\\s+u\\s+)")
+        currentItem = currentItem.replace(connectorRegex, "\n")
+
         val initialSplit = currentItem.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         if (initialSplit.size > 1) return initialSplit
 
-        // Handle cases like "1.1 papa na2.sandia" -> "1.1 papa y 2.sandia"
-        // Reemplazo: evitar look-behind variable no soportado en Java/Kotlin
-        val complexSplitRegex = Regex("""(\d\s[a-zA-Zñáéíóúü]+)\s+(na|y)\s+(?=\d)""")
-        if (complexSplitRegex.containsMatchIn(item)) {
-            // Usar findAll y reconstruir los splits manualmente
-            val matches = complexSplitRegex.findAll(item).toList()
-            if (matches.isNotEmpty()) {
-                val parts = mutableListOf<String>()
-                var lastIndex = 0
-                for (match in matches) {
-                    // Agrega la parte antes del 'na|y'
-                    val end = match.range.first + match.groupValues[1].length
-                    parts.add(item.substring(lastIndex, end).trim())
-                    lastIndex = match.range.last + 1
-                }
-                // Agrega la última parte
-                if (lastIndex < item.length) {
-                    parts.add(item.substring(lastIndex).trim())
-                }
-                return parts.filter { it.isNotEmpty() }
-            }
-        }
+        // Split por número al inicio de palabra
+        val splitByNumber = Regex("(?<=\\d)\\s+(?=[a-zA-Zñáéíóúü])")
+        val parts = currentItem.split(splitByNumber).map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.size > 1) return parts
 
-        // Split by "y" or "&"
-        val andRegex = Regex("\\s+(y|&)\\s+")
-        if (item.contains(andRegex)) {
-            val parts = item.split(andRegex)
-            // Dividir si al menos una de las partes contiene un número, o si ninguna lo tiene.
-            val hasNumberPart1 = Regex("\\b\\d").find(parts.getOrElse(0) { "" }) != null
-            val hasNumberPart2 = Regex("\\b\\d").find(parts.getOrElse(1) { "" }) != null
-
-            if (parts.size == 2 && (hasNumberPart1 || hasNumberPart2 || (!hasNumberPart1 && !hasNumberPart2))) {
-                return parts.map { it.trim() }
-            }
-        }
-
-        // Split if multiple numbers are present, indicating multiple items
-        val numberCount = Regex("\\b\\d+(?:[.,]\\d+)?\\b").findAll(item).count()
-        if (numberCount > 1) {
-            val startsWithNumber = item.trim().matches(Regex("^\\d.*"))
-            val splitRegex = if (startsWithNumber) {
-                Regex("""(?<=[a-zA-Zñ])(?=\\d)""") // "item 1 item 2"
-            } else {
-                Regex("""(?<=\\d)\\s+(?=[a-zA-Zñáéíóúü(])""") // "1 item 2 item"
-            }
-            val parts = item.split(splitRegex).map { it.trim() }
-            if (parts.size > 1) return parts
-        }
-
-        // Validación extra: evitar productos inválidos como '/2', 'cual', etc.
+        // Validación extra: evitar productos inválidos solo si el nombre completo es irrelevante o muy corto
         val cleaned = item.trim().lowercase()
-        if (irrelevantItems.any { cleaned == it || cleaned.startsWith(it) }) {
+        if (cleaned.length < 2 || irrelevantItems.any { cleaned == it || cleaned.startsWith(it) }) {
             return emptyList()
         }
         return listOf(item)
@@ -204,7 +240,9 @@ object QuantityParser {
 
         val finalProductName = cleanProductName(input)
 
-        if (finalProductName.isBlank() || finalProductName.length < 2 || unitSynonyms.values.flatten().contains(finalProductName.lowercase())) {
+        val finalProductNameNoAccents = TextNormalizationUtils.removeAccents(finalProductName.lowercase())
+        val ignoreKeywordsNoAccents = ignoreKeywords.map { TextNormalizationUtils.removeAccents(it) }
+        if (finalProductName.isBlank() || finalProductName.length < 2 || unitSynonyms.values.flatten().contains(finalProductName.lowercase()) || ignoreKeywordsNoAccents.any { finalProductNameNoAccents.contains(it) }) {
             return null
         }
 
@@ -402,7 +440,9 @@ object QuantityParser {
         private fun inferPriceRange(notes: String?): PriceRange? {
             if (notes == null) return null
             val economyKeywords = listOf("barato", "económico", "oferta", "barata")
-            return if (economyKeywords.any { notes.contains(it, ignoreCase = true) }) {
+            return if (economyKeywords.any { kw ->
+                TextNormalizationUtils.removeAccents(notes).contains(TextNormalizationUtils.removeAccents(kw), ignoreCase = true)
+            }) {
                 PriceRange.ECONOMY
             } else {
                 null
@@ -412,7 +452,9 @@ object QuantityParser {
         private fun inferCategory(productName: String, brand: String?, notes: String?): String? {
             val textToSearch = listOfNotNull(productName, brand, notes).joinToString(" ").lowercase()
             for ((category, keywords) in categoryKeywords) {
-                if (keywords.any { keyword -> textToSearch.contains(keyword, ignoreCase = true) }) {
+                if (keywords.any { keyword ->
+                    TextNormalizationUtils.removeAccents(textToSearch).contains(TextNormalizationUtils.removeAccents(keyword), ignoreCase = true)
+                }) {
                     return category
                 }
             }
@@ -429,6 +471,7 @@ object QuantityParser {
             "Cuidado Personal" to listOf("champú", "jabón", "pasta de dientes", "cepillos", "desodorante", "calcetines", "focos", "pilas"),
             "Limpieza" to listOf("detergente", "cloro", "lavalozas", "papel higiénico", "esponjas", "servilletas")
         )
+
     
         // Ahora importado desde UnitUtils:
         // val result = UnitUtils.UnitUtils.findUnitInString(input)

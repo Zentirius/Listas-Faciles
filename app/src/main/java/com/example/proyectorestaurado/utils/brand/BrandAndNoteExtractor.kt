@@ -1,5 +1,8 @@
 package com.example.proyectorestaurado.utils.brand
 
+import com.example.proyectorestaurado.utils.TextNormalizationUtils
+import com.example.proyectorestaurado.utils.BrandNoteUtils
+
 object BrandAndNoteExtractor {
     fun separateBrandsAndNotes(brandText: String): Pair<List<String>, List<String>> {
         val notePhrases = listOf("o el más barato", "o el económico", "el más barato", "el económico", "o el más económico", "o el más barato posible")
@@ -14,8 +17,8 @@ object BrandAndNoteExtractor {
         }
         val brandCandidates = cleanedBrandText.split(Regex("\\s+/\\s+|\\s+o\\s+|\\s+u\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
         val (brands, notesExtra) = brandCandidates.partition { part ->
-            val lower = part.lowercase()
-            !listOf("barato", "económico", "oferta", "preguntar", "mejor", "más barato", "económica", "económico", "no muy cara").any { lower.contains(it) }
+            val lowerNoAccent = TextNormalizationUtils.removeAccents(part.lowercase())
+            !BrandNoteUtils.noteKeywords.any { kw -> lowerNoAccent.contains(TextNormalizationUtils.removeAccents(kw)) }
         }
         return Pair(brands, noteCandidates + notesExtra.filter { it.isNotBlank() })
     }

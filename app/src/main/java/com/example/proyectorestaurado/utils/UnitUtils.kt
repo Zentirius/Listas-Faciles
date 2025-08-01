@@ -18,12 +18,14 @@ object UnitUtils {
         val trimmed = input.trim()
         if (trimmed.isEmpty()) return Pair(null, "")
         // Busca la primera coincidencia de unidad conocida
+        val trimmedNoAccent = TextNormalizationUtils.removeAccents(trimmed)
         for ((canonical, synonyms) in unitSynonyms) {
             for (syn in synonyms) {
-                val regex = Regex("""\b$syn\b""", RegexOption.IGNORE_CASE)
-                val match = regex.find(trimmed)
+                val synNoAccent = TextNormalizationUtils.removeAccents(syn)
+                val regex = Regex("""\b$synNoAccent\b""", RegexOption.IGNORE_CASE)
+                val match = regex.find(trimmedNoAccent)
                 if (match != null) {
-                    val name = trimmed.replace(regex, "").replace("  ", " ").trim()
+                    val name = trimmed.replace(Regex("""\b$syn\b""", RegexOption.IGNORE_CASE), "").replace("  ", " ").trim()
                     return Pair(canonical, name)
                 }
             }
