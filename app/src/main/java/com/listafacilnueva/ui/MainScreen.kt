@@ -140,31 +140,26 @@ fun MainScreen(
                             }
                         }
                         
-                        // Botones de acción
-                        Column(
-                            modifier = Modifier.fillMaxWidth()
+                        // Botones de acción - Diseño compacto y elegante
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Primera fila: Borrar Todo
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Start
+                            // Botón Borrar Todo (izquierda)
+                            TextButton(
+                                onClick = { showDeleteDialog = true },
+                                colors = ButtonDefaults.textButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
                             ) {
-                                TextButton(
-                                    onClick = { showDeleteDialog = true },
-                                    colors = ButtonDefaults.textButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.error
-                                    )
-                                ) {
-                                    Text(
-                                        "Borrar Todo",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
+                                Text(
+                                    "Borrar Todo",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
                             
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            // Segunda fila: Borrar Marcados (ancho completo)
+                            // Botón Borrar Marcados (derecha) - Compacto
                             Button(
                                 onClick = { 
                                     productos = productos.filter { !it.isChecked }
@@ -173,10 +168,10 @@ fun MainScreen(
                                     containerColor = MaterialTheme.colorScheme.error,
                                     contentColor = MaterialTheme.colorScheme.onError
                                 ),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(44.dp)
+                                    .height(32.dp)
+                                    .wrapContentWidth()
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -185,12 +180,12 @@ fun MainScreen(
                                     Icon(
                                         Icons.Default.Delete, 
                                         contentDescription = "Eliminar marcados",
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         "Borrar Marcados",
-                                        style = MaterialTheme.typography.bodyLarge,
+                                        style = MaterialTheme.typography.bodySmall,
                                         fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
                                     )
                                 }
