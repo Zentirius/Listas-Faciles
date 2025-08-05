@@ -48,6 +48,7 @@ fun CameraOCRScreen(
     
     var isProcessing by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Apunta la cámara hacia el texto") }
+    var useCaptureMode by remember { mutableStateOf(false) } // false = stream, true = captura
     
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -71,6 +72,25 @@ fun CameraOCRScreen(
                 IconButton(onClick = onBack) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
                 }
+            },
+            actions = {
+                // Botón para cambiar modo
+                TextButton(
+                    onClick = { 
+                        useCaptureMode = !useCaptureMode
+                        statusMessage = if (useCaptureMode) {
+                            "Modo Captura - Presiona el botón para tomar foto"
+                        } else {
+                            "Modo Stream - Apunta hacia el texto"
+                        }
+                        println("🔄 CAMBIANDO A MODO: ${if (useCaptureMode) "CAPTURA" else "STREAM"}")
+                    }
+                ) {
+                    Text(
+                        if (useCaptureMode) "Stream" else "Captura",
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         )
         
@@ -79,17 +99,10 @@ fun CameraOCRScreen(
                 // Camera Preview
                 CameraPreview(
                     modifier = Modifier.fillMaxSize(),
-                    onTextRecognized = { text ->
-                        if (!isProcessing && text.isNotBlank()) {
-                            onTextRecognized(text)
-                        }
-                    },
-                    onProcessingChanged = { processing ->
-                        isProcessing = processing
-                    },
-                    onStatusChanged = { status ->
-                        statusMessage = status
-                    }
+                    useCaptureMode = useCaptureMode,
+                    onTextRecognized = onTextRecognized,
+                    onProcessingChanged = { isProcessing = it },
+                    onStatusChanged = { statusMessage = it }
                 )
                 
                 // Status overlay
@@ -119,17 +132,20 @@ fun CameraOCRScreen(
                     }
                 }
                 
-                // Capture button
-                FloatingActionButton(
-                    onClick = {
-                        // El OCR se ejecuta automáticamente
-                        statusMessage = "Procesando imagen..."
-                    },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Capturar")
+                // Capture button - Solo visible en modo captura
+                if (useCaptureMode) {
+                    FloatingActionButton(
+                        onClick = {
+                            statusMessage = "Capturando foto..."
+                            println("📷 CAPTURANDO FOTO EN MODO CAPTURA")
+                            // Aquí se ejecutará la captura de foto
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Capturar Foto")
+                    }
                 }
             }
         } else {
@@ -159,6 +175,7 @@ fun CameraOCRScreen(
 @Composable
 private fun CameraPreview(
     modifier: Modifier = Modifier,
+    useCaptureMode: Boolean = false,
     onTextRecognized: (String) -> Unit,
     onProcessingChanged: (Boolean) -> Unit,
     onStatusChanged: (String) -> Unit
@@ -190,35 +207,72 @@ private fun CameraPreview(
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
                 
-                val imageAnalyzer = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also { analysis ->
-                        analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                            processImageForText(
-                                imageProxy = imageProxy,
-                                textRecognizer = textRecognizer,
-                                onTextRecognized = onTextRecognized,
-                                onProcessingChanged = onProcessingChanged,
-                                onStatusChanged = onStatusChanged
-                            )
-                        }
+                // Intentar cámara trasera primero, luego frontal (mejor para emulador)
+                val cameraSelector = try {
+                    if (cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+                        CameraSelector.DEFAULT_BACK_CAMERA
+                    } else {
+                        CameraSelector.DEFAULT_FRONT_CAMERA
                     }
-                
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        cameraSelector,
-                        preview,
-                        imageAnalyzer
-                    )
-                    onStatusChanged("Cámara lista - Apunta hacia el texto")
-                } catch (exc: Exception) {
-                    onStatusChanged("Error al inicializar cámara")
+                } catch (e: Exception) {
+                    CameraSelector.DEFAULT_FRONT_CAMERA
                 }
+                
+                println("🔄 CONFIGURANDO MODO: ${if (useCaptureMode) "CAPTURA" else "STREAM"}")
+                
+                if (useCaptureMode) {
+                    // MODO CAPTURA: Solo ImageCapture (mejor para emulador/webcam)
+                    val imageCapture = ImageCapture.Builder().build()
+                    
+                    try {
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview,
+                            imageCapture
+                        )
+                        onStatusChanged("Modo Captura - Cámara lista para fotos")
+                        println("📷 MODO CAPTURA ACTIVADO - COMPATIBLE CON WEBCAM")
+                    } catch (exc: Exception) {
+                        onStatusChanged("Error en modo captura: ${exc.message}")
+                        println("❌ ERROR MODO CAPTURA: ${exc.message}")
+                    }
+                    
+                } else {
+                    // MODO STREAM: Solo ImageAnalysis (mejor para dispositivos reales)
+                    val imageAnalyzer = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                        .also { analysis ->
+                            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                                processImageForText(
+                                    imageProxy = imageProxy,
+                                    textRecognizer = textRecognizer,
+                                    onTextRecognized = onTextRecognized,
+                                    onProcessingChanged = onProcessingChanged,
+                                    onStatusChanged = onStatusChanged
+                                )
+                            }
+                        }
+                    
+                    try {
+                        cameraProvider.unbindAll()
+                        cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            cameraSelector,
+                            preview,
+                            imageAnalyzer
+                        )
+                        onStatusChanged("Modo Stream - Apunta hacia el texto")
+                        println("📹 MODO STREAM ACTIVADO - ANÁLISIS EN VIVO")
+                    } catch (exc: Exception) {
+                        onStatusChanged("Error en modo stream: ${exc.message}")
+                        println("❌ ERROR MODO STREAM: ${exc.message}")
+                    }
+                }
+                
+                // La lógica de binding ya se maneja arriba según el modo
                 
             }, ContextCompat.getMainExecutor(ctx))
             

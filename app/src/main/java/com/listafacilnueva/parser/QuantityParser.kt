@@ -32,22 +32,46 @@ object QuantityParser {
     }
 
     /**
-     * MEJORA SUGERIDA POR AMIGO: Detecta y separa patrones como 1.2metros cable2.bombilla grande
+     * CORREGIDO: Detecta y separa patrones como 1.2metros cable2.bombilla grande
      * Transforma: "1.2metros cable2.bombilla grande" → "2 metros cable, bombilla grande"
+     * El "1." y "2." son numeración de lista, no decimales
      */
     private fun limpiarNumeracionCompuesta(linea: String): String {
-        // Detecta y separa patrones como 1.2metros cable2.bombilla grande
-        val patron = Regex("^(\\d+)\\.(\\d+)\\s*([a-zA-Záéíóúüñ]+)\\s+(.*?)\\s*(\\d+)\\.\\s*(.+)$", RegexOption.IGNORE_CASE)
+        // Patrón: 1.cantidad+unidad+producto+número.producto
+        // Ejemplo: "1.2metros cable2.bombilla grande" 
+        val patron = Regex("^(\\d+)\\.(\\d+)([a-zA-Záéíóúüñ]+)\\s+([^\\d]+?)(\\d+)\\.(.+)$", RegexOption.IGNORE_CASE)
         val match = patron.find(linea)
-        return if (match != null) {
-            val cantidad1 = match.groupValues[2]
-            val unidad1 = match.groupValues[3]
-            val nombre1 = match.groupValues[4]
-            val nombre2 = match.groupValues[6]
-            "$cantidad1 $unidad1 $nombre1, $nombre2"
-        } else {
-            linea
+        
+        if (match != null) {
+            val cantidad1 = match.groupValues[2]      // "2"
+            val unidad1 = match.groupValues[3]        // "metros"
+            val nombre1 = match.groupValues[4].trim() // "cable"
+            val nombre2 = match.groupValues[6].trim() // "bombilla grande"
+            
+            return "$cantidad1 $unidad1 $nombre1, $nombre2"
         }
+        
+        // Patrón más simple: 1.producto1+cantidad+unidad2.producto2
+        // Ejemplo: "1.shampoo 500ml2.desodorantes"
+        val patron2 = Regex("^(\\d+)\\.([a-zA-Záéíóúüñ\\s]+?)(\\d+)([a-zA-Záéíóúüñ]*)(\\d+)\\.(.+)$", RegexOption.IGNORE_CASE)
+        val match2 = patron2.find(linea)
+        
+        if (match2 != null) {
+            val nombre1 = match2.groupValues[2].trim()  // "shampoo "
+            val cantidad1 = match2.groupValues[3]       // "500"
+            val unidad1 = match2.groupValues[4]         // "ml"
+            val nombre2 = match2.groupValues[6].trim()  // "desodorantes"
+            
+            val producto1 = if (unidad1.isNotBlank()) {
+                "$nombre1 $cantidad1$unidad1"
+            } else {
+                "$cantidad1 $nombre1"
+            }.trim()
+            
+            return "$producto1, $nombre2"
+        }
+        
+        return linea
     }
     
     private fun limpiarNumeracionLista(linea: String): String {

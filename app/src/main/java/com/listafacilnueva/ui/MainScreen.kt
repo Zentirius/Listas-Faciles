@@ -8,10 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.CameraAlt  // Agregar esta línea
-import androidx.compose.material.icons.filled.Search     // Agregar esta línea
-// Eliminar: import androidx.compose.material.icons.filled.Add (duplicado)
-// Eliminar: import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility     
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,17 +36,23 @@ fun MainScreen(
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    showOCRScreen = true
-                },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(
-                    Icons.Default.CameraAlt,  // Ya está correcto
-                    contentDescription = "Escanear con cámara",
-                    tint = MaterialTheme.colorScheme.onPrimary
-                )
+            // Solo mostrar el botón flotante cuando NO esté abierta la pantalla OCR
+            if (!showOCRScreen) {
+                FloatingActionButton(
+                    onClick = {
+                        println("📷 BOTÓN CÁMARA PRESIONADO")
+                        println("🔄 CAMBIANDO showOCRScreen a true")
+                        showOCRScreen = true
+                        println("🔍 showOCRScreen = $showOCRScreen")
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        Icons.Default.Visibility,
+                        contentDescription = "Escanear con cámara",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
             }
         }
     ) { padding ->
@@ -88,10 +92,20 @@ fun MainScreen(
                         
                         Button(
                             onClick = {
+                                println("🔴 BOTÓN AGREGAR PRESIONADO")
+                                println("📝 TEXTO INPUT: '$inputText'")
                                 if (inputText.isNotBlank()) {
+                                    println("✅ TEXTO NO ESTÁ VACÍO, PARSEANDO...")
                                     val nuevosProductos = QuantityParser.parse(inputText)
+                                    println("🧠 PRODUCTOS PARSEADOS: ${nuevosProductos.size}")
+                                    nuevosProductos.forEach { producto ->
+                                        println("   - ${producto.nombre} (${producto.cantidad} ${producto.unidad})")
+                                    }
                                     productos = productos + nuevosProductos
+                                    println("📋 TOTAL PRODUCTOS EN LISTA: ${productos.size}")
                                     inputText = ""
+                                } else {
+                                    println("❌ TEXTO ESTÁ VACÍO")
                                 }
                             },
                             shape = RoundedCornerShape(12.dp)
@@ -128,37 +142,59 @@ fun MainScreen(
                         }
                         
                         // Botones de acción
-                        Row {
-                            TextButton(
-                                onClick = { showDeleteDialog = true },
-                                colors = ButtonDefaults.textButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
-                                )
+                        Column(
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Primera fila: Borrar Todo
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Start
                             ) {
-                                Text("Borrar Todo")
+                                TextButton(
+                                    onClick = { showDeleteDialog = true },
+                                    colors = ButtonDefaults.textButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.error
+                                    )
+                                ) {
+                                    Text(
+                                        "Borrar Todo",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
                             }
                             
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // Segunda fila: Borrar Marcados (ancho completo)
                             Button(
                                 onClick = { 
                                     productos = productos.filter { !it.isChecked }
                                 },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                    containerColor = MaterialTheme.colorScheme.error,
+                                    contentColor = MaterialTheme.colorScheme.onError
                                 ),
                                 shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.height(36.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Delete, 
-                                    contentDescription = "Eliminar",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    "Marcados",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete, 
+                                        contentDescription = "Eliminar marcados",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Borrar Marcados",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
@@ -175,7 +211,6 @@ fun MainScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
-            )
             
             Spacer(modifier = Modifier.height(16.dp))
             
@@ -246,20 +281,22 @@ fun MainScreen(
             }
         }
         
-        // Diálogo de edición
-        productoAEditar?.let { producto ->
-            EditProductDialog(
-                initialProduct = producto,
-                onDismiss = { productoAEditar = null },
-                onSave = { nuevoProducto ->
-                    productos = productos.map {
-                        if (it == producto) nuevoProducto else it
-                    }
-                    productoAEditar = null
-                }
-            )
-        }
+    } // ← AGREGAR ESTA LÍNEA para cerrar el lambda del Scaffold
         
+    // Diálogo de edición
+    productoAEditar?.let { producto ->
+        EditProductDialog(
+            initialProduct = producto,
+            onDismiss = { productoAEditar = null },
+            onSave = { nuevoProducto ->
+                productos = productos.map {
+                    if (it == producto) nuevoProducto else it
+                }
+                productoAEditar = null
+            }
+        )
+    }
+    
         // Diálogo de confirmación para borrar todo
         if (showDeleteDialog) {
             AlertDialog(
@@ -286,6 +323,7 @@ fun MainScreen(
         
         // Pantalla de OCR
         if (showOCRScreen) {
+            println("📱 MOSTRANDO PANTALLA OCR")
             CameraOCRScreen(
                 onTextRecognized = { recognizedText ->
                     // DEBUG: Imprimir texto reconocido
@@ -302,6 +340,7 @@ fun MainScreen(
                     showOCRScreen = false
                 },
                 onBack = {
+                    println("🔙 CERRANDO PANTALLA OCR")
                     showOCRScreen = false
                 }
             )
@@ -399,10 +438,14 @@ fun ProductItem(
             }
             
             // Botón de editar
-            IconButton(onClick = onEdit) {
+            IconButton(
+                onClick = onEdit,
+                modifier = Modifier.size(48.dp)
+            ) {
                 Icon(
                     Icons.Default.Edit,
-                    contentDescription = "Editar",
+                    contentDescription = "Editar producto",
+                    modifier = Modifier.size(24.dp),
                     tint = if (producto.isChecked)
                         MaterialTheme.colorScheme.onSurfaceVariant
                     else
@@ -413,12 +456,90 @@ fun ProductItem(
     }
 }
 
-// ELIMINAR ESTAS LÍNEAS (417-423):
-// // Opción 1: Usar CameraAlt (recomendado)
-// import androidx.compose.material.icons.filled.CameraAlt
+// ❌ ELIMINAR TODO DESDE AQUÍ HASTA EL FINAL DEL ARCHIVO
+// @Composable
+// fun EditProductDialog(
+//     initialProduct: Producto,
+//     onDismiss: () -> Unit,
+//     onSave: (Producto) -> Unit
+// ) {
+//     var nombre by remember { mutableStateOf(initialProduct.nombre) }
+//     var cantidad by remember { mutableStateOf(initialProduct.cantidad?.toString() ?: "") }
+//     var unidad by remember { mutableStateOf(initialProduct.unidad ?: "") }
+//     var nota by remember { mutableStateOf(initialProduct.nota ?: "") }
+//     var marcas by remember { mutableStateOf(initialProduct.marcas.joinToString(", ")) }
 //
-// // Opción 2: Usar PhotoCamera
-// import androidx.compose.material.icons.filled.PhotoCamera
-//
-// // Opción 3: Usar Scanner (si está disponible)
-// import androidx.compose.material.icons.filled.Scanner
+//     AlertDialog(
+//         onDismissRequest = onDismiss,
+//         title = { Text("Editar producto") },
+//         text = {
+//             Column {
+//                 OutlinedTextField(
+//                     value = nombre,
+//                     onValueChange = { nombre = it },
+//                     label = { Text("Nombre") },
+//                     modifier = Modifier.fillMaxWidth()
+//                 )
+//                
+//                 Spacer(modifier = Modifier.height(8.dp))
+//                
+//                 OutlinedTextField(
+//                     value = cantidad,
+//                     onValueChange = { cantidad = it },
+//                     label = { Text("Cantidad") },
+//                     modifier = Modifier.fillMaxWidth()
+//                 )
+//                
+//                 Spacer(modifier = Modifier.height(8.dp))
+//                
+//                 OutlinedTextField(
+//                     value = unidad,
+//                     onValueChange = { unidad = it },
+//                     label = { Text("Unidad") },
+//                     modifier = Modifier.fillMaxWidth()
+//                 )
+//                
+//                 Spacer(modifier = Modifier.height(8.dp))
+//                
+//                 OutlinedTextField(
+//                     value = marcas,
+//                     onValueChange = { marcas = it },
+//                     label = { Text("Marcas (separadas por coma)") },
+//                     modifier = Modifier.fillMaxWidth()
+//                 )
+//                
+//                 Spacer(modifier = Modifier.height(8.dp))
+//                
+//                 OutlinedTextField(
+//                     value = nota,
+//                     onValueChange = { nota = it },
+//                     label = { Text("Nota") },
+//                     modifier = Modifier.fillMaxWidth()
+//                 )
+//             }
+//         },
+//         confirmButton = {
+//             TextButton(
+//                 onClick = {
+//                     val cantidadDouble = cantidad.toDoubleOrNull()
+//                     val marcasList = if (marcas.isBlank()) emptyList() else marcas.split(",").map { it.trim() }
+//                     val productoEditado = initialProduct.copy(
+//                         nombre = nombre,
+//                         cantidad = cantidadDouble,
+//                         unidad = unidad.ifBlank { null },
+//                         nota = nota.ifBlank { null },
+//                         marcas = marcasList
+//                     )
+//                     onSave(productoEditado)
+//                 }
+//             ) {
+//                 Text("Guardar")
+//             }
+//         },
+//         dismissButton = {
+//             TextButton(onClick = onDismiss) {
+//                 Text("Cancelar")
+//             }
+//         }
+//     )
+// }
