@@ -8,8 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Visibility     
+import androidx.compose.material.icons.filled.Search     
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,7 +47,7 @@ fun MainScreen(
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
                     Icon(
-                        Icons.Default.Visibility,
+                        Icons.Default.Add,
                         contentDescription = "Escanear con cámara",
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
