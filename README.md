@@ -1,4 +1,4 @@
-# 🛒 Lista Fácil Nueva
+o que m# 🛒 Lista Fácil Nueva
 
 **Aplicación Android moderna para gestión inteligente de listas de compras**
 

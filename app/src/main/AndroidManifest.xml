@@ -13,9 +13,10 @@
         android:theme="@style/Theme.ListaFacilNueva">
         <!-- Actividades principales se agregarán aquí -->
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.ListaFacilNueva">
+            android:theme="@style/Theme.ListaFacilNueva"
+            android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

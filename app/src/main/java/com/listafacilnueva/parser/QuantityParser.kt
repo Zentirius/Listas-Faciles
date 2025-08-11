@@ -4,64 +4,67 @@ import com.listafacilnueva.model.Producto
 
 object QuantityParser {
 
-    fun parse(texto: String): List<Producto> {
-        println("🚀 PARSER INICIADO")
-        println("📝 Input length: ${texto.length} caracteres")
-        println("📝 Input preview: '${texto.take(100)}...'")
+    // FUNCIÓN DE MEJORAS INTEGRADA - Aplica las mejoras más efectivas de la demostración
+    private fun aplicarMejorasAlTexto(texto: String): String {
+        var resultado = texto
         
+        // MEJORA 1: Corregir decimales con punto final
+        val patronDecimalConPuntoFinal = Regex("(\\d+\\.\\d+)\\.$")
+        if (resultado.contains(patronDecimalConPuntoFinal)) {
+            resultado = resultado.replace(patronDecimalConPuntoFinal, "$1")
+        }
+        
+        // MEJORA 2: Separar decimales pegados
+        val patronDecimalesPegados = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ]{3,})")
+        if (resultado.contains(patronDecimalesPegados)) {
+            resultado = resultado.replace(patronDecimalesPegados, "$1, $2")
+        }
+        
+        // MEJORA 3: Separar productos consecutivos con decimales
+        val patronProductosConsecutivos = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+?)(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+)")
+        if (resultado.contains(patronProductosConsecutivos)) {
+            resultado = resultado.replace(patronProductosConsecutivos, "$1 $2, $3 $4")
+        }
+        
+        // MEJORA 4: Separar cantidades pegadas sin decimales
+        val patronCantidadesPegadas = Regex("(\\d+)([a-zA-Záéíóúüñ]{3,})(\\d+)([a-zA-Záéíóúüñ]{3,})")
+        if (resultado.contains(patronCantidadesPegadas)) {
+            resultado = resultado.replace(patronCantidadesPegadas, "$1 $2, $3 $4")
+        }
+        
+        // MEJORA 5: Limpiar espacios múltiples y comas repetidas
+        resultado = resultado.replace(Regex("\\s+"), " ")
+        resultado = resultado.replace(Regex(",+"), ",")
+        resultado = resultado.trim()
+        
+        return resultado
+    }
+
+    fun parse(texto: String): List<Producto> {
+        val textoConMejoras = aplicarMejorasAlTexto(texto)
         val productos = mutableListOf<Producto>()
-        val textoNormalizado = normalizarNumeros(texto)
+        val textoNormalizado = normalizarNumeros(textoConMejoras)
         val lineas = textoNormalizado.split(Regex("[\n;]+")).filter { it.isNotBlank() }
         
-        println("📊 Líneas detectadas: ${lineas.size}")
-        
         for ((indice, linea) in lineas.withIndex()) {
-            println("🔄 Procesando línea $indice: '$linea'")
+            if (esLineaBasura(linea)) continue
             
-            // Filtrar líneas basura
-            if (esLineaBasura(linea)) {
-                println("  ❌ Línea basura ignorada")
-                continue
-            }
-            
-            // MEJORA CRÍTICA NUEVA: Extraer cantidad implícita del contexto previo
-            // Ej: "2 lechugas francesas preguntar...cual son..." debe detectar cantidad 2
             val lineaConCantidadImplicita = extraerCantidadImplicita(linea, indice, lineas)
-            
-            // MEJORA CRÍTICA: Detectar cantidades decimales múltiples PRIMERO
             val productosDecimales = analizarCantidadesDecimales(lineaConCantidadImplicita)
             if (productosDecimales.isNotEmpty()) {
-                println("  🎯 Línea procesada como cantidades decimales múltiples: ${productosDecimales.size} productos")
-                productosDecimales.forEach { 
-                    println("    + ${it.nombre} (${it.cantidad})")
-                }
                 productos.addAll(productosDecimales)
                 continue
             }
             
-            // MEJORA DEL AMIGO: Preprocesar numeración compuesta ANTES de limpiar numeración simple
             val lineaLimpia = limpiarNumeracionLista(limpiarNumeracionCompuesta(lineaConCantidadImplicita))
-            println("  🧹 Línea limpia: '$lineaLimpia'")
-            
-            // Procesar línea
             val fragmentos = dividirEnFragmentos(lineaLimpia)
-            println("  📦 Fragmentos generados: ${fragmentos.size} -> ${fragmentos}")
             
-            for ((fragIndice, fragmento) in fragmentos.withIndex()) {
+            for (fragmento in fragmentos) {
                 val producto = procesarFragmento(fragmento)
                 if (producto != null && esProductoValido(producto)) {
-                    println("    ✅ Fragmento $fragIndice: '${producto.nombre}' (${producto.cantidad})")
                     productos.add(producto)
-                } else {
-                    println("    ❌ Fragmento $fragIndice descartado: '$fragmento'")
                 }
             }
-        }
-        
-        println("🏁 PARSER TERMINADO")
-        println("📈 Total productos generados: ${productos.size}")
-        productos.forEachIndexed { i, producto -> 
-            println("  ${i+1}. ${producto.nombre} [${producto.cantidad}${producto.unidad}]")
         }
         
         return productos
@@ -1244,3 +1247,4 @@ object QuantityParser {
         val nombre: String
     )
 }
+ 
