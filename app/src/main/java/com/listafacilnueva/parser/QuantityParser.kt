@@ -4,64 +4,33 @@ import com.listafacilnueva.model.Producto
 
 object QuantityParser {
 
-    // FUNCIÓN DE MEJORAS INTEGRADA - Aplica las mejoras más efectivas de la demostración
+    // DELEGADO AL MÓDULO TextPreprocessor
     private fun aplicarMejorasAlTexto(texto: String): String {
-        var resultado = texto
-        
-        // MEJORA 1: Corregir decimales con punto final
-        val patronDecimalConPuntoFinal = Regex("(\\d+\\.\\d+)\\.$")
-        if (resultado.contains(patronDecimalConPuntoFinal)) {
-            resultado = resultado.replace(patronDecimalConPuntoFinal, "$1")
-        }
-        
-        // MEJORA 2: Separar decimales pegados
-        val patronDecimalesPegados = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ]{3,})")
-        if (resultado.contains(patronDecimalesPegados)) {
-            resultado = resultado.replace(patronDecimalesPegados, "$1, $2")
-        }
-        
-        // MEJORA 3: Separar productos consecutivos con decimales
-        val patronProductosConsecutivos = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+?)(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+)")
-        if (resultado.contains(patronProductosConsecutivos)) {
-            resultado = resultado.replace(patronProductosConsecutivos, "$1 $2, $3 $4")
-        }
-        
-        // MEJORA 4: Separar cantidades pegadas sin decimales
-        val patronCantidadesPegadas = Regex("(\\d+)([a-zA-Záéíóúüñ]{3,})(\\d+)([a-zA-Záéíóúüñ]{3,})")
-        if (resultado.contains(patronCantidadesPegadas)) {
-            resultado = resultado.replace(patronCantidadesPegadas, "$1 $2, $3 $4")
-        }
-        
-        // MEJORA 5: Limpiar espacios múltiples y comas repetidas
-        resultado = resultado.replace(Regex("\\s+"), " ")
-        resultado = resultado.replace(Regex(",+"), ",")
-        resultado = resultado.trim()
-        
-        return resultado
+        return TextPreprocessor.aplicarMejorasAlTexto(texto)
     }
 
     fun parse(texto: String): List<Producto> {
         val textoConMejoras = aplicarMejorasAlTexto(texto)
         val productos = mutableListOf<Producto>()
-        val textoNormalizado = normalizarNumeros(textoConMejoras)
+        val textoNormalizado = TextPreprocessor.normalizarNumeros(textoConMejoras)
         val lineas = textoNormalizado.split(Regex("[\n;]+")).filter { it.isNotBlank() }
         
         for ((indice, linea) in lineas.withIndex()) {
-            if (esLineaBasura(linea)) continue
+            if (ValidationUtils.esLineaBasura(linea)) continue
             
-            val lineaConCantidadImplicita = extraerCantidadImplicita(linea, indice, lineas)
-            val productosDecimales = analizarCantidadesDecimales(lineaConCantidadImplicita)
+            val lineaConCantidadImplicita = TextPreprocessor.extraerCantidadImplicita(linea, indice, lineas)
+            val productosDecimales = DecimalQuantityProcessor.analizarCantidadesDecimales(lineaConCantidadImplicita)
             if (productosDecimales.isNotEmpty()) {
                 productos.addAll(productosDecimales)
                 continue
             }
             
-            val lineaLimpia = limpiarNumeracionLista(limpiarNumeracionCompuesta(lineaConCantidadImplicita))
-            val fragmentos = dividirEnFragmentos(lineaLimpia)
+            val lineaLimpia = EnumerationAnalyzer.limpiarNumeracionLista(EnumerationAnalyzer.limpiarNumeracionCompuesta(lineaConCantidadImplicita))
+            val fragmentos = TextFragmenter.dividirEnFragmentos(lineaLimpia)
             
             for (fragmento in fragmentos) {
-                val producto = procesarFragmento(fragmento)
-                if (producto != null && esProductoValido(producto)) {
+                val producto = QuantityExtractor.procesarFragmento(fragmento)
+                if (producto != null && ValidationUtils.esProductoValido(producto)) {
                     productos.add(producto)
                 }
             }
