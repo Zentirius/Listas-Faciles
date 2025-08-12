@@ -1,0 +1,58 @@
+🔍 ANÁLISIS MANUAL DE CASOS COMPLEJOS EN LA LISTA
+=====================================================
+
+CASOS MÁS DESAFIANTES IDENTIFICADOS:
+
+1. **PRODUCTOS CON MARCAS Y DESCRIPCIONES LARGAS:**
+   "pastelera con albaca marca, frutos del maipo o minuto verde.(es una bolsa de crema de choclo)"
+   🎯 DIFICULTAD: Múltiples marcas, descripción entre paréntesis
+   ⚠️ RIESGO: Parser puede confundirse con las comas y paréntesis
+
+2. **PRODUCTOS CON CONSULTAS INTEGRADAS:**
+   "2 lechugas francesas preguntar...cual son..."
+   "3 rollos papel higiénico preguntar...cuál es mejor..."
+   🎯 DIFICULTAD: Texto de consulta mezclado con producto
+   ⚠️ RIESGO: La función extraerCantidadImplicita puede no limpiar bien
+
+3. **PRODUCTOS MÚLTIPLES PEGADOS:**
+   "leche asadas ,6sandias,8tomates,6 zanaorias 5 zapatos"
+   "champú suave ,4cepillos,12servilletas,3 desodorantes 7 calcetines"
+   🎯 DIFICULTAD: Múltiples cantidades consecutivas
+   ✅ VENTAJA: Las mejoras integradas deberían manejar esto
+
+4. **NUMERACIÓN COMPLEJA:**
+   "1.1papa mediana2.sandia grande"
+   "1.2metros cable 2.bombilla grande 3.zapallo chino"
+   🎯 DIFICULTAD: Decimales mezclados con numeración
+   ✅ VENTAJA: Procesamiento de numeración compleja implementado
+
+5. **PALABRAS NUMÉRICAS:**
+   "cinco tomates", "ocho zanahorias", "siete velas", "diez pilas"
+   🎯 DIFICULTAD: Convertir palabras a números
+   ✅ VENTAJA: convertirPalabraANumero() implementado
+
+6. **PRODUCTOS SIN CANTIDAD EXPLÍCITA:**
+   "Zanahorias", "Papel aluminio", "Jabón líquido"
+   🎯 DIFICULTAD: Detectar como producto válido sin cantidad
+   ✅ VENTAJA: Debe asignar cantidad = null y ser válido
+
+7. **CANTIDADES CON UNIDADES COMPLEJAS:**
+   "1.5 litros de jugo de naranja,,,2 latas de atún"
+   "2.5 metros de cinta adhesiva,,,3 tubos de pegamento"
+   🎯 DIFICULTAD: Múltiples comas, unidades específicas
+   ⚠️ RIESGO: Las comas múltiples pueden confundir la separación
+
+PREDICCIÓN DE ÉXITO:
+📊 Casos fáciles (cantidades simples): 90-95% éxito
+📊 Casos medios (palabras numéricas): 85-90% éxito  
+📊 Casos difíciles (marcas, consultas): 70-80% éxito
+📊 Casos extremos (numeración compleja): 60-75% éxito
+
+🎯 ESTIMACIÓN TOTAL: 75-85% de detección exitosa
+   (Aproximadamente 40-50 productos de ~60 productos totales)
+
+POSIBLES MEJORAS IDENTIFICADAS:
+1. Mejor manejo de paréntesis con descripciones
+2. Limpieza más agresiva de texto de consultas
+3. Mejor separación cuando hay comas múltiples
+4. Detección de marcas como metadata separada

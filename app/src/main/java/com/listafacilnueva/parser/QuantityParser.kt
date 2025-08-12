@@ -73,7 +73,7 @@ object QuantityParser {
     // NUEVA FUNCIÓN: Extraer cantidad implícita del contexto
     private fun extraerCantidadImplicita(linea: String, indice: Int, todasLineas: List<String>): String {
         // Caso: "2 lechugas francesas preguntar...cual son..."
-        // La cantidad puede estar al inicio de la línea pero perderse en el procesamiento
+        // OBJETIVO: Preservar la pregunta como nota, no eliminarla
         
         // Verificar si la línea original tiene cantidad al inicio
         val patronCantidadInicio = Regex("^(\\d+)\\s+(.+)", RegexOption.IGNORE_CASE)
@@ -83,15 +83,31 @@ object QuantityParser {
             val cantidad = matchInicio.groupValues[1]
             val resto = matchInicio.groupValues[2]
             
-            // Si el resto contiene indicadores de continuación como "preguntar", mantener la cantidad
+            // Si el resto contiene indicadores de continuación como "preguntar", PRESERVAR como nota
             if (resto.contains("preguntar", ignoreCase = true) || resto.contains("...", ignoreCase = true)) {
-                // Limpiar la parte problemática pero mantener la estructura principal
-                val restoLimpio = resto
-                    .replace(Regex("preguntar[^.]*\\.\\.\\..*"), "")
-                    .trim()
+                // Extraer la parte del producto y la pregunta por separado
+                val patronProductoConPregunta = Regex("^([a-zA-Záéíóúüñ\\s]+?)\\s+(preguntar[^.]*\\.\\.\\..*)", RegexOption.IGNORE_CASE)
+                val matchProductoPregunta = patronProductoConPregunta.find(resto)
                 
-                if (restoLimpio.isNotEmpty()) {
-                    return "$cantidad $restoLimpio"
+                if (matchProductoPregunta != null) {
+                    val nombreProducto = matchProductoPregunta.groupValues[1].trim()
+                    val pregunta = matchProductoPregunta.groupValues[2].trim()
+                    
+                    if (nombreProducto.isNotEmpty()) {
+                        // Devolver el producto con la pregunta entre paréntesis como nota
+                        return "$cantidad $nombreProducto ($pregunta)"
+                    }
+                } else {
+                    // Fallback: separar por la palabra "preguntar"
+                    val partesPreguntar = resto.split("preguntar", ignoreCase = true, limit = 2)
+                    if (partesPreguntar.size == 2) {
+                        val nombreProducto = partesPreguntar[0].trim()
+                        val pregunta = "preguntar${partesPreguntar[1]}".trim()
+                        
+                        if (nombreProducto.isNotEmpty()) {
+                            return "$cantidad $nombreProducto ($pregunta)"
+                        }
+                    }
                 }
             }
         }
@@ -104,7 +120,7 @@ object QuantityParser {
         println("🔍 ANALIZANDO: '$texto'")
         
         // VERIFICACIÓN PRIMERA: Detectar secuencias de numeración válidas ANTES de rechazar por decimales
-        // CASO CRÍTICO: "1.2metros cable 2.bombilla grande 3.zapallo chino" (DEBE ser numeración)
+        // CASO CRÍTICO: "1.2metros cable 2.bombilla grande 3.zapallo chino" (DEBE ser numeración mixta)
         
         // Enfoque simplificado: buscar todos los números seguidos de punto
         val numerosConPunto = Regex("\\b(\\d+)\\.", RegexOption.IGNORE_CASE).findAll(texto).map { it.groupValues[1].toInt() }.toList()
@@ -121,17 +137,115 @@ object QuantityParser {
             
             if (esSecuenciaConsecutiva && numerosConPunto[0] in 1..10) { // Rango razonable para numeración de lista
                 println("🔍 NUMERACIÓN DE LISTA DETECTADA: ${numerosConPunto.size} productos (${numerosConPunto.joinToString(", ")})")
+                
+                // NUEVA LÓGICA MEJORADA: Usar palabras clave de unidades como pista adicional
+                val unidadesDetectadas = detectarUnidadesEnTexto(texto)
+                println("🔍 UNIDADES DETECTADAS: $unidadesDetectadas")
+                
+                // LÓGICA INTELIGENTE: Si hay unidades, analizar el contexto
+                if (unidadesDetectadas.isNotEmpty()) {
+                    return analizarNumeracionConUnidades(texto, numerosConPunto, unidadesDetectadas)
+                }
+                
+                // LÓGICA ORIGINAL: Verificar si es numeración mixta vs decimales puros
+                val tieneDecimalesConEspacios = Regex("\\d+\\.\\d+\\s+(metros?|kg|litros?|gramos?|gr|ml|cm|mm)\\b", RegexOption.IGNORE_CASE)
+                val matchesDecimales = tieneDecimalesConEspacios.findAll(texto).toList()
+                
+                // Si TODOS los números tienen decimales con unidades, entonces son cantidades reales, no numeración
+                if (matchesDecimales.size == numerosConPunto.size) {
+                    println("🔍 TODOS son decimales con unidades - SON CANTIDADES REALES, NO numeración")
+                    return false
+                }
+                
+                // Si solo ALGUNOS tienen decimales, es numeración mixta ✅
+                if (matchesDecimales.size > 0 && matchesDecimales.size < numerosConPunto.size) {
+                    println("🔍 NUMERACIÓN MIXTA detectada - algunos decimales, algunos enteros")
+                    return true
+                }
+                
+                // Si ninguno tiene decimales con unidades, es numeración normal ✅
+                return true
+            }
+        }
+
+        return false
+    }
+
+    // NUEVA FUNCIÓN: Detectar unidades en el texto
+    private fun detectarUnidadesEnTexto(texto: String): List<String> {
+        val unidadesConocidas = listOf(
+            // Medidas de longitud
+            "metros", "metro", "m", "centimetros", "centímetros", "cm", "milimetros", "milímetros", "mm",
+            "pulgadas", "pulgada", "pies", "pie",
+            
+            // Medidas de peso
+            "kg", "kilogramos", "kilogramo", "gramos", "gramo", "gr", "g", "libras", "libra", "onzas", "onza",
+            
+            // Medidas de volumen
+            "litros", "litro", "l", "ml", "mililitros", "mililitro", "galones", "galon",
+            
+            // Medidas de área
+            "metros cuadrados", "metro cuadrado", "m2", "hectareas", "hectáreas",
+            
+            // Unidades de tiempo
+            "horas", "hora", "minutos", "minuto", "segundos", "segundo",
+            
+            // Unidades especiales
+            "rollos", "rollo", "bolsas", "bolsa", "latas", "lata", "tubos", "tubo", "paquetes", "paquete"
+        )
+        
+        val unidadesEncontradas = mutableListOf<String>()
+        unidadesConocidas.forEach { unidad ->
+            if (texto.contains(unidad, ignoreCase = true)) {
+                unidadesEncontradas.add(unidad)
+            }
+        }
+        
+        return unidadesEncontradas
+    }
+
+    // NUEVA FUNCIÓN: Analizar numeración cuando hay unidades presentes
+    private fun analizarNumeracionConUnidades(texto: String, numerosConPunto: List<Int>, unidades: List<String>): Boolean {
+        println("🔍 ANÁLISIS INTELIGENTE con unidades: $unidades")
+        
+        // CASO 1: Si hay exactamente 1 unidad y múltiples números, probablemente es numeración mixta
+        // Ejemplo: "1.2metros cable 2.bombilla 3.zapallo" → 1 unidad "metros", 3 números [1,2,3]
+        if (unidades.size == 1 && numerosConPunto.size >= 2) {
+            println("🔍 PATRÓN: 1 unidad + ${numerosConPunto.size} números → NUMERACIÓN MIXTA")
+            return true
+        }
+        
+        // CASO 2: Si hay múltiples unidades pero todas diferentes, podría ser numeración
+        // Ejemplo: "1.2metros cable 2.litros agua 3.kg azucar" → diferentes unidades, numeración
+        if (unidades.size > 1 && unidades.size == numerosConPunto.size) {
+            val unidadesUnicas = unidades.distinct()
+            if (unidadesUnicas.size == unidades.size) {
+                println("🔍 PATRÓN: Cada número con unidad diferente → NUMERACIÓN")
                 return true
             }
         }
         
-        // VERIFICACIÓN CRÍTICA SEGUNDA: Detectar cantidades decimales reales (solo si NO es numeración)
-        // Casos como "1.2metros de madera 3.8 metros de cable" NO son numeración
-        val tieneDecimalesConEspacios = Regex("\\d+\\.\\d+\\s+(metros?|kg|litros?|gramos?|gr|ml|cm|mm)\\b", RegexOption.IGNORE_CASE)
-        if (tieneDecimalesConEspacios.containsMatchIn(texto)) {
-            println("🔍 CANTIDADES DECIMALES REALES DETECTADAS - NO es numeración")
-            return false
+        // CASO 3: Si hay múltiples unidades iguales, probablemente son cantidades reales
+        // Ejemplo: "1.2metros cable 2.5metros madera" → misma unidad repetida, cantidades
+        if (unidades.size > 1) {
+            val unidadesUnicas = unidades.distinct()
+            if (unidadesUnicas.size < unidades.size) {
+                println("🔍 PATRÓN: Unidades repetidas → CANTIDADES REALES")
+                return false
+            }
         }
+        
+        // CASO 4: Detectar patrones específicos de productos con unidades
+        // "rollos papel", "bolsas arroz", "tubos pegamento"
+        val unidadesProducto = listOf("rollos", "bolsas", "latas", "tubos", "paquetes")
+        if (unidades.any { it in unidadesProducto }) {
+            println("🔍 PATRÓN: Unidades de producto detectadas → NUMERACIÓN probable")
+            return true
+        }
+        
+        // Por defecto, si no está claro, usar la lógica original
+        return numerosConPunto.size >= 2
+    }
         
         // VERIFICACIÓN ADICIONAL: Si contiene múltiples patrones decimal+unidad, es cantidad real
         val patronDecimalUnidad = Regex("\\d+\\.\\d+\\s*[a-zA-Záéíóúüñ]+", RegexOption.IGNORE_CASE)
@@ -246,7 +360,7 @@ object QuantityParser {
         }
         
         // CASO CRÍTICO ESPECÍFICO: "1.2metros cable 2.bombilla grande 3.zapallo chino"
-        // Patrón para 3 productos con cantidad en el primero
+        // Patrón mejorado para 3 productos con cantidad en el primero
         val patron3Productos = Regex("^(\\d+)\\.(\\d+)([a-zA-Záéíóúüñ]+)\\s+([a-zA-Záéíóúüñ\\s]+?)\\s+(\\d+)\\.([a-zA-Záéíóúüñ\\s]+?)\\s+(\\d+)\\.([a-zA-Záéíóúüñ\\s]+)$", RegexOption.IGNORE_CASE)
         val match3Prod = patron3Productos.find(linea)
         
@@ -259,6 +373,23 @@ object QuantityParser {
             
             val resultado = "$cantidad1$unidad1 $nombre1, $nombre2, $nombre3"
             println("🧠 Transformación 3 productos: '$resultado'")
+            return resultado
+        }
+        
+        // CASO ESPECÍFICO ALTERNATIVO: Patrón más flexible para el caso problemático
+        // "1.2metros cable 2.bombilla grande 3.zapallo chino"
+        val patronFlexible = Regex("^(\\d+)\\.(\\d+)([a-zA-Záéíóúüñ]+)\\s+([a-zA-Záéíóúüñ]+)\\s+(\\d+)\\.([a-zA-Záéíóúüñ\\s]+?)\\s+(\\d+)\\.([a-zA-Záéíóúüñ\\s]+)$", RegexOption.IGNORE_CASE)
+        val matchFlexible = patronFlexible.find(linea)
+        
+        if (matchFlexible != null) {
+            val cantidad1 = matchFlexible.groupValues[2] // "2"
+            val unidad1 = matchFlexible.groupValues[3]   // "metros"
+            val nombre1 = matchFlexible.groupValues[4].trim() // "cable"
+            val nombre2 = matchFlexible.groupValues[6].trim() // "bombilla grande"
+            val nombre3 = matchFlexible.groupValues[8].trim() // "zapallo chino"
+            
+            val resultado = "$cantidad1$unidad1 $nombre1, $nombre2, $nombre3"
+            println("🧠 Transformación 3 productos (patrón flexible): '$resultado'")
             return resultado
         }
         
@@ -878,6 +1009,29 @@ object QuantityParser {
     // FUNCIÓN 100% NUEVA: Análisis inteligente de cantidades decimales
     private fun analizarCantidadesDecimales(texto: String): List<Producto> {
         println("🔢 Analizando cantidades decimales en: '$texto'")
+        
+        // VERIFICACIÓN CRÍTICA: Antes de procesar como decimales, verificar si es numeración mixta
+        val numerosConPunto = Regex("\\b(\\d+)\\.", RegexOption.IGNORE_CASE)
+            .findAll(texto)
+            .map { it.groupValues[1].toInt() }
+            .toList()
+        
+        // Si hay múltiples números en secuencia consecutiva (1, 2, 3...), probablemente es numeración de lista
+        if (numerosConPunto.size >= 2) {
+            var esSecuenciaConsecutiva = true
+            for (i in 1 until numerosConPunto.size) {
+                if (numerosConPunto[i] != numerosConPunto[i-1] + 1) {
+                    esSecuenciaConsecutiva = false
+                    break
+                }
+            }
+            
+            if (esSecuenciaConsecutiva && numerosConPunto[0] in 1..10) {
+                println("🔍 NUMERACIÓN DE LISTA DETECTADA: ${numerosConPunto.size} productos (${numerosConPunto.joinToString(", ")})")
+                println("🔍 NO procesar como cantidades decimales - delegar a numeración")
+                return emptyList() // Dejar que lo procese limpiarNumeracionCompuesta
+            }
+        }
         
         // CASO CRÍTICO: "1.2metros de madera 3.8 metros de cable" 
         // Patrón mejorado para detectar múltiples cantidades decimales con unidades

@@ -1,0 +1,7 @@
+task testExtremoValidacion(type: JavaExec) {
+    dependsOn classes
+    main = 'com.listafacilnueva.test.TestExtremoValidacionKt'
+    classpath = sourceSets.main.runtimeClasspath
+    standardOutput = System.out
+    errorOutput = System.err
+}
