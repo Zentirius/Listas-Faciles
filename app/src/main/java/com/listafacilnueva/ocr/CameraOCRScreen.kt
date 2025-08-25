@@ -1,3 +1,4 @@
+@file:OptIn(ExperimentalGetImage::class)
 package com.listafacilnueva.ocr
 
 import android.Manifest
@@ -6,6 +7,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.*
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
@@ -27,6 +29,8 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.annotation.SuppressLint
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,11 +53,15 @@ fun CameraOCRScreen(
     var isProcessing by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Apunta la cámara hacia el texto") }
     var useCaptureMode by remember { mutableStateOf(false) } // false = stream, true = captura
+    var cameraError by remember { mutableStateOf<String?>(null) }
     
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasCameraPermission = isGranted
+        if (!isGranted) {
+            statusMessage = "Permiso de cámara denegado"
+        }
     }
     
     LaunchedEffect(Unit) {
@@ -83,7 +91,6 @@ fun CameraOCRScreen(
                         } else {
                             "Modo Stream - Apunta hacia el texto"
                         }
-                        println("🔄 CAMBIANDO A MODO: ${if (useCaptureMode) "CAPTURA" else "STREAM"}")
                     }
                 ) {
                     Text(
@@ -96,13 +103,14 @@ fun CameraOCRScreen(
         
         if (hasCameraPermission) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Camera Preview
+                // Camera Preview con manejo de errores
                 CameraPreview(
                     modifier = Modifier.fillMaxSize(),
                     useCaptureMode = useCaptureMode,
                     onTextRecognized = onTextRecognized,
                     onProcessingChanged = { isProcessing = it },
-                    onStatusChanged = { statusMessage = it }
+                    onStatusChanged = { statusMessage = it },
+                    onError = { error -> cameraError = error }
                 )
                 
                 // Status overlay
@@ -126,8 +134,9 @@ fun CameraOCRScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                         Text(
-                            text = statusMessage,
-                            style = MaterialTheme.typography.bodyMedium
+                            text = cameraError ?: statusMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (cameraError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -137,7 +146,6 @@ fun CameraOCRScreen(
                     FloatingActionButton(
                         onClick = {
                             statusMessage = "Capturando foto..."
-                            println("📷 CAPTURANDO FOTO EN MODO CAPTURA")
                             // Aquí se ejecutará la captura de foto
                         },
                         modifier = Modifier
@@ -178,20 +186,31 @@ private fun CameraPreview(
     useCaptureMode: Boolean = false,
     onTextRecognized: (String) -> Unit,
     onProcessingChanged: (Boolean) -> Unit,
-    onStatusChanged: (String) -> Unit
+    onStatusChanged: (String) -> Unit,
+    onError: (String) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     
     val textRecognizer = remember {
-        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        try {
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        } catch (e: Exception) {
+            onError("Error al inicializar OCR: ${e.message}")
+            null
+        }
     }
     
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     
     DisposableEffect(Unit) {
         onDispose {
-            cameraExecutor.shutdown()
+            try {
+                cameraExecutor.shutdown()
+                textRecognizer?.close()
+            } catch (e: Exception) {
+                // ✅ SILENCIOSO: No logging para evitar congelamiento
+            }
         }
     }
     
@@ -201,78 +220,80 @@ private fun CameraPreview(
             val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
             
             cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-                
-                val preview = Preview.Builder().build().also {
-                    it.setSurfaceProvider(previewView.surfaceProvider)
-                }
-                
-                // Intentar cámara trasera primero, luego frontal (mejor para emulador)
-                val cameraSelector = try {
-                    if (cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
-                        CameraSelector.DEFAULT_BACK_CAMERA
-                    } else {
+                try {
+                    val cameraProvider = cameraProviderFuture.get()
+                    
+                    val preview = Preview.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
+                    
+                    // Intentar cámara trasera primero, luego frontal (mejor para emulador)
+                    val cameraSelector = try {
+                        if (cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) {
+                            CameraSelector.DEFAULT_BACK_CAMERA
+                        } else {
+                            CameraSelector.DEFAULT_FRONT_CAMERA
+                        }
+                    } catch (e: Exception) {
                         CameraSelector.DEFAULT_FRONT_CAMERA
                     }
-                } catch (e: Exception) {
-                    CameraSelector.DEFAULT_FRONT_CAMERA
-                }
-                
-                println("🔄 CONFIGURANDO MODO: ${if (useCaptureMode) "CAPTURA" else "STREAM"}")
-                
-                if (useCaptureMode) {
-                    // MODO CAPTURA: Solo ImageCapture (mejor para emulador/webcam)
-                    val imageCapture = ImageCapture.Builder().build()
                     
-                    try {
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            cameraSelector,
-                            preview,
-                            imageCapture
-                        )
-                        onStatusChanged("Modo Captura - Cámara lista para fotos")
-                        println("📷 MODO CAPTURA ACTIVADO - COMPATIBLE CON WEBCAM")
-                    } catch (exc: Exception) {
-                        onStatusChanged("Error en modo captura: ${exc.message}")
-                        println("❌ ERROR MODO CAPTURA: ${exc.message}")
-                    }
-                    
-                } else {
-                    // MODO STREAM: Solo ImageAnalysis (mejor para dispositivos reales)
-                    val imageAnalyzer = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .also { analysis ->
-                            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                                processImageForText(
-                                    imageProxy = imageProxy,
-                                    textRecognizer = textRecognizer,
-                                    onTextRecognized = onTextRecognized,
-                                    onProcessingChanged = onProcessingChanged,
-                                    onStatusChanged = onStatusChanged
-                                )
-                            }
+                    if (useCaptureMode) {
+                        // MODO CAPTURA: Solo ImageCapture (mejor para emulador/webcam)
+                        val imageCapture = ImageCapture.Builder().build()
+                        
+                        try {
+                            cameraProvider.unbindAll()
+                            cameraProvider.bindToLifecycle(
+                                lifecycleOwner,
+                                cameraSelector,
+                                preview,
+                                imageCapture
+                            )
+                            onStatusChanged("Modo Captura - Cámara lista para fotos")
+                        } catch (exc: Exception) {
+                            onError("Error en modo captura: ${exc.message}")
                         }
-                    
-                    try {
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            cameraSelector,
-                            preview,
-                            imageAnalyzer
-                        )
-                        onStatusChanged("Modo Stream - Apunta hacia el texto")
-                        println("📹 MODO STREAM ACTIVADO - ANÁLISIS EN VIVO")
-                    } catch (exc: Exception) {
-                        onStatusChanged("Error en modo stream: ${exc.message}")
-                        println("❌ ERROR MODO STREAM: ${exc.message}")
+                        
+                    } else {
+                        // MODO STREAM: Solo ImageAnalysis (mejor para dispositivos reales)
+                        val imageAnalyzer = ImageAnalysis.Builder()
+                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .build()
+                            .also { analysis ->
+                                analysis.setAnalyzer(cameraExecutor) { imageProxy ->
+                                    try {
+                                        processImageForText(
+                                            imageProxy = imageProxy,
+                                            textRecognizer = textRecognizer,
+                                            onTextRecognized = onTextRecognized,
+                                            onProcessingChanged = onProcessingChanged,
+                                            onStatusChanged = onStatusChanged
+                                        )
+                                    } catch (e: Exception) {
+                                        onStatusChanged("Error procesando imagen")
+                                        imageProxy.close()
+                                    }
+                                }
+                            }
+                        
+                        try {
+                            cameraProvider.unbindAll()
+                            cameraProvider.bindToLifecycle(
+                                lifecycleOwner,
+                                cameraSelector,
+                                preview,
+                                imageAnalyzer
+                            )
+                            onStatusChanged("Modo Stream - Apunta hacia el texto")
+                        } catch (exc: Exception) {
+                            onError("Error en modo stream: ${exc.message}")
+                        }
                     }
+                    
+                } catch (e: Exception) {
+                    onError("Error al configurar cámara: ${e.message}")
                 }
-                
-                // La lógica de binding ya se maneja arriba según el modo
                 
             }, ContextCompat.getMainExecutor(ctx))
             
@@ -282,38 +303,68 @@ private fun CameraPreview(
     )
 }
 
+@OptIn(ExperimentalGetImage::class)
+@SuppressLint("UnsafeOptInUsageError")
 private fun processImageForText(
     imageProxy: ImageProxy,
-    textRecognizer: com.google.mlkit.vision.text.TextRecognizer,
+    textRecognizer: com.google.mlkit.vision.text.TextRecognizer?,
     onTextRecognized: (String) -> Unit,
     onProcessingChanged: (Boolean) -> Unit,
     onStatusChanged: (String) -> Unit
 ) {
+    if (textRecognizer == null) {
+        onStatusChanged("OCR no disponible")
+        imageProxy.close()
+        return
+    }
+    
     val mediaImage = imageProxy.image
     if (mediaImage != null) {
         onProcessingChanged(true)
-        
-        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-        
-        textRecognizer.process(image)
-            .addOnSuccessListener { visionText ->
-                val recognizedText = visionText.text
-                if (recognizedText.isNotBlank()) {
-                    onTextRecognized(recognizedText)
-                    onStatusChanged("✅ Texto detectado: ${recognizedText.take(50)}...")
-                } else {
-                    onStatusChanged("No se detectó texto - Intenta de nuevo")
+
+        try {
+            val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+            
+            // Usar callback en lugar de await()
+            textRecognizer.process(image)
+                .addOnSuccessListener { result ->
+                    try {
+                        val processedText = preprocessOCRText(result.text)
+                        
+                        if (processedText.isNotBlank()) {
+                            onTextRecognized(processedText)
+                            onStatusChanged("✅ Texto procesado: ${processedText.take(50)}...")
+                        }
+                    } catch (e: Exception) {
+                        onStatusChanged("Error procesando texto")
+                    } finally {
+                        onProcessingChanged(false)
+                        imageProxy.close()
+                    }
                 }
-                onProcessingChanged(false)
-            }
-            .addOnFailureListener { e ->
-                onStatusChanged("Error en reconocimiento: ${e.message}")
-                onProcessingChanged(false)
-            }
-            .addOnCompleteListener {
-                imageProxy.close()
-            }
+                .addOnFailureListener { e ->
+                    onStatusChanged("⚠️ Error OCR: ${e.message?.take(40)}")
+                    onProcessingChanged(false)
+                    imageProxy.close()
+                }
+        } catch (e: Exception) {
+            onStatusChanged("⚠️ Error imagen: ${e.message?.take(40)}")
+            onProcessingChanged(false)
+            imageProxy.close()
+        }
     } else {
+        onProcessingChanged(false)
         imageProxy.close()
+    }
+}
+
+private fun preprocessOCRText(rawText: String): String {
+    return try {
+        rawText
+            .replace(Regex("[^\\p{L}0-9 ]")) { " " } // Eliminar caracteres especiales
+            .replace(Regex("\\s+")) { " " } // Unificar espacios
+            .trim()
+    } catch (e: Exception) {
+        rawText.trim() // ✅ SILENCIOSO: No logging para evitar congelamiento
     }
 }

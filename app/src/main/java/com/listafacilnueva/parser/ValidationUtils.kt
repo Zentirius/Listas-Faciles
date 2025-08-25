@@ -3,127 +3,129 @@ package com.listafacilnueva.parser
 import com.listafacilnueva.model.Producto
 
 /**
- * ✅ MÓDULO: Utilidades de Validación
+ * VALIDADOR DE UTILIDADES
  * 
- * Responsable de todas las validaciones y filtros para
- * determinar qué texto y productos son válidos.
+ * Funciones para validar y filtrar líneas, fragmentos
+ * y productos durante el procesamiento.
  */
 object ValidationUtils {
 
+    // Normalización básica: minúsculas, sin tildes/diacríticos, espacios colapsados
+    private fun normalizarBasico(texto: String): String {
+        val lower = texto.trim().lowercase()
+        val decomposed = java.text.Normalizer.normalize(lower, java.text.Normalizer.Form.NFD)
+        val sinDiacriticos = decomposed.replace(Regex("\\p{Mn}+"), "")
+        return sinDiacriticos.replace(Regex("[\u0020\t\u00A0]+"), " ").trim()
+    }
+
     /**
-     * Determina si una línea es basura y debe ser ignorada
+     * VALIDADOR DE LÍNEAS BASURA
      */
     fun esLineaBasura(linea: String): Boolean {
-        val texto = linea.trim().lowercase()
-        
-        return texto.isEmpty() ||
-               texto.length < 2 ||
-               texto.all { it.isDigit() || it == '.' } ||
-               texto in setOf(".", ",", ";", ":", "-", "_", "=") ||
-               texto.startsWith("http") ||
-               texto.matches(Regex("^[\\d\\s.,;:]+$"))
+        val lineaLimpia = linea.trim().lowercase()
+        return lineaLimpia.contains("no son cantidades") ||
+               lineaLimpia.matches(Regex("^tipo\\s+\\d+.*")) ||
+               lineaLimpia.isBlank() ||
+               // Solo números (con posible punto/coma) y opcional punto final
+               lineaLimpia.matches(Regex("^[0-9]+([.,][0-9]+)?\\.?$"))
     }
 
     /**
-     * Determina si un fragmento es basura y no debe procesarse
+     * VALIDADOR DE FRAGMENTOS BASURA
      */
     fun esFragmentoBasura(fragmento: String): Boolean {
-        val texto = fragmento.trim().lowercase()
+        val fragLimpio = fragmento.trim().lowercase()
+        val fragNorm = normalizarBasico(fragmento)
         
-        if (texto.isEmpty() || texto.length < 2) return true
+        // Fragmentos muy cortos o vacíos - CORREGIDO: Permitir fragmentos de 1+ caracteres
+        if (fragLimpio.isBlank() || fragLimpio.length < 1) return true
         
-        // Filtrar fragmentos que son solo números, puntos o símbolos
-        if (texto.matches(Regex("^[\\d\\s.,;:]+$"))) return true
-        
-        // Filtrar fragmentos que son solo palabras irrelevantes
-        val palabrasBasura = setOf(
-            "de", "del", "la", "las", "el", "los", "un", "una", "unos", "unas",
-            "y", "o", "con", "sin", "para", "por", "a", "en", "que", "se", "es",
-            "comprar", "lista", "supermercado", "super", "mandado", "mercado",
-            "favor", "anotar", "apuntar", "recordar", "nota", "notas",
-            "si", "hay", "cuando", "puedas", "despues", "después", "luego",
-            "también", "tambien", "además", "ademas"
+        // Solo puntuación/espacios
+        if (fragmento.trim().matches(Regex("^[\\p{Punct}\\s]+$"))) return true
+
+        // Solo números (con posible punto/coma) y opcional punto final
+        if (fragLimpio.matches(Regex("^[0-9]+([.,][0-9]+)?\\.?$"))) return true
+
+        // Frases comunes que no son producto (falsos positivos)
+        val frasesNoProducto = setOf(
+            "cual son",
+            "cual es mejor",
+            "cual es"
         )
-        
-        val palabrasEnFragmento = texto.split(Regex("\\s+"))
-        val palabrasRelevantes = palabrasEnFragmento.filter { it !in palabrasBasura }
-        
-        // Si después de filtrar palabras basura queda muy poco, es basura
-        if (palabrasRelevantes.isEmpty() || 
-            (palabrasRelevantes.size == 1 && palabrasRelevantes[0].length < 3)) {
-            return true
+        val fragSinPuntFinal = fragNorm.replace(Regex("[\\p{Punct}]+$"), "").trim()
+        if (frasesNoProducto.contains(fragSinPuntFinal) || frasesNoProducto.any { fragSinPuntFinal.startsWith(it) }) return true
+
+        // Cualquier fragmento que contenga "preguntar" se considera nota, no producto
+        if (fragNorm.contains("preguntar")) return true
+
+        // Paréntesis huérfanos (fragmentos como "(es" o "tubo de pasta dental)"), suelen ser restos de notas
+        val contieneApertura = fragLimpio.contains('(')
+        val contieneCierre = fragLimpio.contains(')')
+        if (contieneApertura.xor(contieneCierre)) {
+            // Si solo hay un lado del paréntesis y el fragmento es relativamente corto, descartarlo
+            if (fragLimpio.length <= 30) return true
         }
+
+        // MEJORA: Filtrar fragmentos que empiecen con preposiciones
+        if (fragLimpio.startsWith("de ") || 
+            fragLimpio.startsWith("en ") || 
+            fragLimpio.startsWith("y ") ||
+            fragLimpio.startsWith("o ") ||
+            fragLimpio.startsWith("con ")) return true
+            
+        // MEJORA: Filtrar fragmentos que sean solo preposiciones + sustantivo
+        val patronPreposicion = Regex("^(de|en|y|o|con)\\s+[\\p{L}]+$", RegexOption.IGNORE_CASE)
+        if (patronPreposicion.matches(fragLimpio)) return true
         
-        // Filtrar patrones específicos de basura
-        val patronesBasura = listOf(
-            Regex("^\\d+\\s*[.,]?\\s*$"),  // Solo números
-            Regex("^[.,;:]+$"),             // Solo puntuación
-            Regex("^\\s*$")                 // Solo espacios
-        )
+        // MEJORA: Filtrar fragmentos que sean solo conjunciones
+        val conjunciones = setOf("y", "o", "de", "en", "con", "para", "por")
+        if (conjunciones.contains(fragLimpio)) return true
         
-        return patronesBasura.any { it.matches(texto) }
+        return false
     }
 
     /**
-     * Valida si un producto es válido y debe ser incluido
+     * VALIDADOR DE PRODUCTOS VÁLIDOS
      */
     fun esProductoValido(producto: Producto): Boolean {
-        val nombre = producto.nombre.trim().lowercase()
-        
-        // Validar nombre mínimo
-        if (nombre.length < 2) return false
-        
-        // Filtrar nombres que son solo números o símbolos
-        if (nombre.matches(Regex("^[\\d\\s.,;:]+$"))) return false
-        
-        // Filtrar nombres que son marcas conocidas solas
-        if (ParserUtils.marcasConocidas.contains(nombre)) return false
-        
-        // Filtrar nombres que son solo palabras irrelevantes
-        val palabrasBasura = setOf(
-            "de", "del", "la", "las", "el", "los", "un", "una", "unos", "unas",
-            "y", "o", "con", "sin", "para", "por", "a", "en", "que", "se", "es"
+        return producto.nombre.trim().isNotBlank() && producto.nombre.trim().length >= 1 // CORREGIDO: Permitir productos de 1+ caracteres
+    }
+
+    /**
+     * Verifica si el nombre se considera "no producto" por frases comunes o paréntesis huérfanos.
+     */
+    fun esNombreNoProducto(nombre: String): Boolean {
+        val n = nombre.trim().lowercase()
+        val norm = normalizarBasico(nombre)
+        if (n.isBlank()) return true
+
+        // Solo puntuación/espacios
+        if (nombre.trim().matches(Regex("^[\\p{Punct}\\s]+$"))) return true
+
+        // Frases comunes no-producto
+        val frasesNoProducto = setOf(
+            "cual son",
+            "cual es mejor",
+            "cual es"
         )
-        
-        val palabras = nombre.split(Regex("\\s+"))
-        val palabrasRelevantes = palabras.filter { it !in palabrasBasura && it.length >= 2 }
-        
-        if (palabrasRelevantes.isEmpty()) return false
-        
-        // Validar cantidad
-        if (producto.cantidad <= 0) return false
-        
-        // Validar que no sea un patrón de numeración residual
-        val patronNumeracionResidual = Regex("^\\d+\\s*[a-zA-Záéíóúüñ]?$")
-        if (patronNumeracionResidual.matches(nombre)) return false
-        
-        return true
+        val nombreSinPuntFinal = norm.replace(Regex("[\\p{Punct}]+$"), "").trim()
+        if (frasesNoProducto.contains(nombreSinPuntFinal) || frasesNoProducto.any { nombreSinPuntFinal.startsWith(it) }) return true
+
+        // "preguntar" en el nombre implica nota
+        if (norm.contains("preguntar")) return true
+
+        // Paréntesis huérfanos
+        val contieneApertura = n.contains('(')
+        val contieneCierre = n.contains(')')
+        if (contieneApertura.xor(contieneCierre) && n.length <= 30) return true
+
+        return false
     }
 
     /**
-     * Verifica si dos partes tienen cantidades separadas
+     * Filtra una lista de productos, removiendo nombres no-producto y valores inválidos.
      */
-    fun tieneCantidadesSeparadas(parte1: String, parte2: String): Boolean {
-        val cantidad1 = Regex("\\d+").find(parte1)
-        val cantidad2 = Regex("\\d+").find(parte2)
-        
-        return cantidad1 != null && cantidad2 != null
-    }
-
-    /**
-     * Determina si se debe separar por puntos
-     */
-    fun debeSeprararPorPunto(fragmento: String): Boolean {
-        // NO separar si contiene decimales obvios
-        if (fragmento.contains(Regex("\\d+\\.\\d+"))) {
-            return false
-        }
-        
-        // Separar si hay múltiples puntos que podrían ser separadores
-        val puntos = fragmento.count { it == '.' }
-        val palabras = fragmento.split(Regex("\\s+")).size
-        
-        // Si hay más puntos que palabras / 2, probablemente son separadores
-        return puntos >= 2 && puntos >= (palabras / 3)
+    fun filtrarProductosBasura(productos: List<Producto>): List<Producto> {
+        return productos.filter { p -> esProductoValido(p) && !esNombreNoProducto(p.nombre) }
     }
 }

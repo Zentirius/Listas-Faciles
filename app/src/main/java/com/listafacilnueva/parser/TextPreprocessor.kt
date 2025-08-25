@@ -1,117 +1,118 @@
 package com.listafacilnueva.parser
 
+import android.util.Log
+
 /**
- * 🔧 MÓDULO: Preprocesamiento de Texto
+ * PREPROCESADOR DE TEXTO
  * 
- * Responsable de todas las operaciones de limpieza y normalización
- * del texto de entrada antes del procesamiento principal.
+ * Funciones para limpiar, normalizar y preparar el texto
+ * antes del procesamiento principal.
  */
 object TextPreprocessor {
+    
+    private var DEBUG_MODE = false
+    private const val TAG = "PREPROCESSOR"
+    
+    fun setDebugMode(enabled: Boolean) {
+        DEBUG_MODE = enabled
+    }
+    
+    private fun log(message: String) {
+        if (DEBUG_MODE) {
+            Log.d(TAG, message)
+        }
+    }
+    
+    // PATRONES REGEX OPTIMIZADOS (compilados una vez)
+    private val PATRON_DECIMAL_CON_PUNTO_FINAL = Regex("(\\d+\\.\\d+)\\.$")
+    private val PATRON_DECIMALES_PEGADOS = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ]{2,})")
+    private val PATRON_PRODUCTOS_CONSECUTIVOS = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+?)(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+)")
+    private val PATRON_CANTIDADES_PEGADAS = Regex("(\\d+)([a-zA-Záéíóúüñ]{2,})(\\d+)([a-zA-Záéíóúüñ]{2,})")
+    private val PATRON_CANTIDADES_ESPACIADAS = Regex("(\\d+)\\s+([a-zA-Záéíóúüñ]{2,})\\s+(\\d+)\\s+([a-zA-Záéíóúüñ]{2,})")
+    private val PATRON_FRACCIONES_MIXTAS = Regex("(\\d+/\\d+)([a-zA-Záéíóúüñ]{2,})(\\d+)([a-zA-Záéíóúüñ]{2,})")
+    // Importante: no colapsar saltos de línea (\n). Solo espacios/tabs/espacio no separador.
+    private val PATRON_ESPACIOS_MULTIPLES = Regex("[ \t\u00A0]+")
+    private val PATRON_COMAS_REPETIDAS = Regex(",+")
 
     /**
-     * Aplica mejoras básicas al texto para facilitar el parsing
+     * FUNCIÓN PRINCIPAL DE PREPROCESAMIENTO
      */
-    fun aplicarMejorasAlTexto(texto: String): String {
+    fun preprocess(texto: String): String {
         var resultado = texto
         
+        log("Preprocesando texto: ${texto.take(100)}...")
+        
+        // MEJORA CRÍTICA: Separar líneas por saltos de línea y puntos (pero no decimales)
+        resultado = resultado.replace(Regex("\\n+"), "\n")
+        // Solo separar por puntos que no sean parte de decimales
+        resultado = resultado.replace(Regex("(?<!\\d)\\.(?!\\d)\\s*"), ".\n")
+        
+        // MEJORAS AVANZADAS INTEGRADAS DEL PARSER 100%:
+        
         // MEJORA 1: Corregir decimales con punto final
-        val patronDecimalConPuntoFinal = Regex("(\\d+\\.\\d+)\\.$")
-        if (resultado.contains(patronDecimalConPuntoFinal)) {
-            resultado = resultado.replace(patronDecimalConPuntoFinal, "$1")
+        if (resultado.contains(PATRON_DECIMAL_CON_PUNTO_FINAL)) {
+            resultado = resultado.replace(PATRON_DECIMAL_CON_PUNTO_FINAL, "$1")
+            log("Corregidos decimales con punto final")
         }
         
-        // MEJORA 2: Separar decimales pegados
-        val patronDecimalesPegados = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ]{3,})")
-        if (resultado.contains(patronDecimalesPegados)) {
-            resultado = resultado.replace(patronDecimalesPegados, "$1, $2")
+        // MEJORA 2: Separar decimales pegados CRÍTICO para "1.1papa mediana2.sandia grande"
+        if (resultado.contains(PATRON_DECIMALES_PEGADOS)) {
+            resultado = resultado.replace(PATRON_DECIMALES_PEGADOS, "$1, $2")
+            log("Separados decimales pegados")
         }
         
         // MEJORA 3: Separar productos consecutivos con decimales
-        val patronProductosConsecutivos = Regex("(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+?)(\\d+\\.\\d+)([a-zA-Záéíóúüñ\\s]+)")
-        if (resultado.contains(patronProductosConsecutivos)) {
-            resultado = resultado.replace(patronProductosConsecutivos, "$1 $2, $3 $4")
+        if (resultado.contains(PATRON_PRODUCTOS_CONSECUTIVOS)) {
+            resultado = resultado.replace(PATRON_PRODUCTOS_CONSECUTIVOS, "$1 $2, $3 $4")
+            log("Separados productos consecutivos con decimales")
         }
         
-        // MEJORA 4: Separar cantidades pegadas sin decimales
-        val patronCantidadesPegadas = Regex("(\\d+)([a-zA-Záéíóúüñ]{3,})(\\d+)([a-zA-Záéíóúüñ]{3,})")
-        if (resultado.contains(patronCantidadesPegadas)) {
-            resultado = resultado.replace(patronCantidadesPegadas, "$1 $2, $3 $4")
+        // MEJORA 4: Separar cantidades pegadas sin decimales CRÍTICO para "6sandias8tomates"
+        if (resultado.contains(PATRON_CANTIDADES_PEGADAS)) {
+            resultado = resultado.replace(PATRON_CANTIDADES_PEGADAS, "$1 $2, $3 $4")
+            log("Separadas cantidades pegadas")
         }
         
-        // MEJORA 5: Limpiar espacios múltiples y comas repetidas
-        resultado = resultado.replace(Regex("\\s+"), " ")
-        resultado = resultado.replace(Regex(",+"), ",")
+        // MEJORA 5: Separar cantidades con espacio "6 zanaorias 5 zapatos"
+        resultado = resultado.replace(PATRON_CANTIDADES_ESPACIADAS, "$1 $2, $3 $4")
+        
+        // MEJORA NUEVA: Separar fracciones mixtas "1/2papa1limon"
+        if (resultado.contains(PATRON_FRACCIONES_MIXTAS)) {
+            resultado = resultado.replace(PATRON_FRACCIONES_MIXTAS, "$1 $2, $3 $4")
+            log("Separadas fracciones mixtas")
+        }
+        
+        // MEJORA 6: Normalizar números en palabras (del parser 100%)
+        resultado = normalizarNumerosEnPalabras(resultado)
+        
+        // MEJORA 7: Limpiar espacios múltiples (sin tocar saltos de línea) y comas repetidas
+        resultado = resultado.replace(PATRON_ESPACIOS_MULTIPLES, " ")
+        resultado = resultado.replace(PATRON_COMAS_REPETIDAS, ",")
         resultado = resultado.trim()
         
-        return resultado
-    }
-
-    /**
-     * Extrae cantidad implícita del contexto de líneas anteriores
-     */
-    fun extraerCantidadImplicita(linea: String, indice: Int, todasLineas: List<String>): String {
-        // Caso: "2 lechugas francesas preguntar...cual son..."
-        // OBJETIVO: Preservar la pregunta como nota, no eliminarla
-        
-        // Verificar si la línea original tiene cantidad al inicio
-        val patronCantidadInicio = Regex("^(\\d+)\\s+(.+)", RegexOption.IGNORE_CASE)
-        val matchInicio = patronCantidadInicio.find(linea)
-        
-        if (matchInicio != null) {
-            val cantidad = matchInicio.groupValues[1]
-            val resto = matchInicio.groupValues[2]
-            
-            // Si el resto contiene indicadores de continuación como "preguntar", PRESERVAR como nota
-            if (resto.contains("preguntar", ignoreCase = true) || resto.contains("...", ignoreCase = true)) {
-                // Extraer la parte del producto y la pregunta por separado
-                val patronProductoConPregunta = Regex("^([a-zA-Záéíóúüñ\\s]+?)\\s+(preguntar[^.]*\\.\\.\\..*)", RegexOption.IGNORE_CASE)
-                val matchProductoPregunta = patronProductoConPregunta.find(resto)
-                
-                if (matchProductoPregunta != null) {
-                    val nombreProducto = matchProductoPregunta.groupValues[1].trim()
-                    val pregunta = matchProductoPregunta.groupValues[2].trim()
-                    
-                    if (nombreProducto.isNotEmpty()) {
-                        // Devolver el producto con la pregunta entre paréntesis como nota
-                        return "$cantidad $nombreProducto ($pregunta)"
-                    }
-                } else {
-                    // Si no se puede separar la pregunta, preservar todo
-                    return linea
-                }
-            }
+        // MEJORA 8: Eliminar líneas basura que contengan solo puntuación/espacios
+        // Evita que entren líneas como "." al pipeline tras separar por puntos no decimales
+        val antesLimpieza = resultado
+        resultado = resultado
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.matches(Regex("^[\\p{Punct}\\s]+$")) }
+            .joinToString("\n")
+        if (resultado != antesLimpieza) {
+            log("Líneas de solo puntuación/espacios eliminadas")
         }
         
-        return linea
-    }
-
-    /**
-     * Normaliza números escritos como palabras a formato numérico
-     */
-    fun normalizarNumeros(texto: String): String {
-        var resultado = texto
-        
-        // Normalizar números escritos como palabras
-        val palabrasNumericas = mapOf(
-            "uno" to "1", "una" to "1", "dos" to "2", "tres" to "3", "cuatro" to "4",
-            "cinco" to "5", "seis" to "6", "siete" to "7", "ocho" to "8", "nueve" to "9", "diez" to "10",
-            "media docena" to "6", "una docena" to "12", "medio kilo" to "0.5", "un cuarto" to "0.25"
-        )
-        
-        for ((palabra, numero) in palabrasNumericas) {
-            val patron = Regex("\\b$palabra\\b", RegexOption.IGNORE_CASE)
-            resultado = resultado.replace(patron, numero)
-        }
+        log("Texto preprocesado: ${resultado.take(100)}...")
         
         return resultado
     }
 
     /**
-     * Convierte una palabra numérica a su valor Double equivalente
+     * CONVERTIR PALABRAS NUMÉRICAS A NÚMEROS
      */
     fun convertirPalabraANumero(palabra: String): Double {
         return when (palabra.lowercase()) {
-            "uno", "una" -> 1.0
+            "uno" -> 1.0
             "dos" -> 2.0
             "tres" -> 3.0
             "cuatro" -> 4.0
@@ -121,11 +122,69 @@ object TextPreprocessor {
             "ocho" -> 8.0
             "nueve" -> 9.0
             "diez" -> 10.0
-            "media docena" -> 6.0
-            "una docena" -> 12.0
-            "medio kilo" -> 0.5
-            "un cuarto" -> 0.25
+            "once" -> 11.0
+            "doce" -> 12.0
+            "media", "medio" -> 0.5
             else -> 1.0
         }
+    }
+
+    /**
+     * NORMALIZACIÓN AVANZADA DE TEXTO (del parser 100%)
+     */
+    private fun normalizarTexto(texto: String): String {
+        var resultado = texto
+        
+        // Normalizar fracciones comunes
+        resultado = resultado.replace(Regex("1/2"), "0.5")
+        resultado = resultado.replace(Regex("1/4"), "0.25")
+        resultado = resultado.replace(Regex("3/4"), "0.75")
+        resultado = resultado.replace(Regex("1/3"), "0.33")
+        resultado = resultado.replace(Regex("2/3"), "0.67")
+        
+        // Normalizar unidades
+        resultado = resultado.replace(Regex("\\bkgs?\\b", RegexOption.IGNORE_CASE), "kg")
+        resultado = resultado.replace(Regex("\\bkilo(s|gramo)?(s)?\\b", RegexOption.IGNORE_CASE), "kg")
+        resultado = resultado.replace(Regex("\\bgramo(s)?\\b", RegexOption.IGNORE_CASE), "g")
+        resultado = resultado.replace(Regex("\\blitro(s)?\\b", RegexOption.IGNORE_CASE), "l")
+        resultado = resultado.replace(Regex("\\bunidad(es)?\\b", RegexOption.IGNORE_CASE), "unidad")
+        resultado = resultado.replace(Regex("\\bpieza(s)?\\b", RegexOption.IGNORE_CASE), "unidad")
+        
+        // Limpiar espacios y caracteres especiales
+        resultado = resultado.replace(Regex("[\\-_\\*\\+]+"), " ")
+        resultado = resultado.replace(Regex("\\s+"), " ")
+        resultado = resultado.trim()
+        
+        return resultado
+    }
+    
+    private fun normalizarNumerosEnPalabras(texto: String): String {
+        var resultado = texto
+        
+        // Convertir números en palabras a dígitos
+        val numerosEnPalabras = mapOf(
+            "uno" to "1",
+            "una" to "1", 
+            "dos" to "2",
+            "tres" to "3",
+            "cuatro" to "4",
+            "cinco" to "5",
+            "seis" to "6",
+            "siete" to "7",
+            "ocho" to "8",
+            "nueve" to "9",
+            "diez" to "10",
+            "once" to "11",
+            "doce" to "12",
+            "media docena" to "6",
+            "medio" to "0.5",
+            "media" to "0.5"
+        )
+        
+        for ((palabra, numero) in numerosEnPalabras) {
+            resultado = resultado.replace(Regex("\\b$palabra\\b", RegexOption.IGNORE_CASE), numero)
+        }
+        
+        return resultado
     }
 }

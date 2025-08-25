@@ -1,14 +1,14 @@
-o que m# 🛒 Lista Fácil Nueva
+# 🛒 Lista Fácil Nueva
 
-**Aplicación Android moderna para gestión inteligente de listas de compras**
+Aplicación Android moderna para gestión inteligente de listas de compras
 
 ## ✨ Características Principales
 
-- 🧠 **Parser Inteligente**: Detecta automáticamente productos, cantidades y unidades
-- 📷 **OCR Integrado**: Escanea listas manuscritas o impresas con la cámara
-- 📱 **UI Moderna**: Jetpack Compose + Material Design 3
-- ✅ **Gestión Completa**: Marcar, editar y eliminar productos
-- 🎯 **Alta Precisión**: 85-90% de precisión en listas reales
+- 🧠 Parser Inteligente: Detecta automáticamente productos, cantidades y unidades
+- 📷 OCR Integrado: Escanea listas manuscritas o impresas con la cámara
+- 📱 UI Moderna: Jetpack Compose + Material Design 3
+- ✅ Gestión Completa: Marcar, editar y eliminar productos
+- 🎯 Alta Precisión: 85-90% de precisión en listas reales
 
 ## 🚀 Funcionalidades
 
@@ -29,45 +29,58 @@ o que m# 🛒 Lista Fácil Nueva
 
 ## 🛠️ Tecnologías
 
-- **Kotlin** + **Jetpack Compose**
-- **Google ML Kit** para OCR
-- **Material Design 3**
-- **Android Gradle Plugin 8.13**
-- **Java 17** compatible
+- Kotlin + Jetpack Compose
+- Google ML Kit para OCR
+- Material Design 3
+- Android Gradle Plugin 8.1.3
+- Java 17 compatible
 
 ## 📱 Capturas
 
-*Próximamente: Screenshots de la aplicación funcionando*
+Próximamente: Screenshots de la aplicación funcionando
 
 ## 🧪 Testing
 
-El proyecto incluye tests unitarios completos que validan:
+El proyecto incluye tests unitarios que validan:
 - Parsing de listas complejas
 - Detección de cantidades y unidades
 - Casos extremos y listas reales
 
 ## 🎯 Estado del Proyecto
 
-✅ **Completado y funcional**
+- ✅ Completado y funcional
 - Parser robusto validado con listas reales
 - OCR integrado y funcionando
 - UI moderna y responsive
-- Tests unitarios completos
+- Tests unitarios básicos en curso
 
----
+## 📐 Reglas de parsing soportadas
 
-**Desarrollado con ❤️ para facilitar las compras diarias**
-- Modularidad y tests unitarios
-
-## Reglas de parsing soportadas
 - Separación por salto de línea, comas, puntos, "y", "o" (cuando corresponde)
 - Detección de marcas, notas, cantidades, unidades
 - Manejo de palabras numéricas y heurística para casos ambiguos
+- Manejo de enumeraciones tipo lista ("1.", "2.") sin confundir con decimales
 
-## Estructura inicial
-- `/ui` Pantallas y componentes Compose
-- `/parser` Lógica de parsing
-- `/ocr` OCR y cámara
-- `/data` Persistencia Room
-- `/model` Modelos de datos
-- `/utils` Utilidades
+## 🗂️ Estructura inicial
+
+```
+/ui       Pantallas y componentes Compose
+/parser   Lógica de parsing
+/ocr      OCR y cámara
+/data     Persistencia Room
+/model    Modelos de datos
+/utils    Utilidades
+```
+
+## ▶️ Cómo ejecutar
+
+1) Requisitos
+- Android Studio Flamingo o superior
+- JDK 17
+
+2) Compilar
+- Sincroniza Gradle y ejecuta la app en un emulador o dispositivo físico.
+
+## 🙌 Créditos
+
+Desarrollado con ❤️ para facilitar las compras diarias.

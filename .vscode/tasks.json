@@ -15,6 +15,12 @@
 			"problemMatcher": [
 				"$gradle"
 			]
+		},
+		{
+			"label": "Test Parser 70 Productos",
+			"type": "shell",
+			"command": "echo \"Ejecutando test del parser para 70 productos...\" && dir app\\src\\main\\java\\com\\listafacilnueva\\parser\\*.kt",
+			"group": "test"
 		}
 	]
 }

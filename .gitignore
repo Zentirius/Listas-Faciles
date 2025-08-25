@@ -9,10 +9,14 @@
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
 .DS_Store
+/# Raíz build
 /build
+# Cualquier módulo build
+**/build/
 /captures
 .externalNativeBuild
 .cxx
+**/.cxx/
 local.properties
 
 # JDK (no necesario en el repo)
@@ -33,6 +37,14 @@ test_parser.kt
 
 # IDE
 .idea/
+/.vscode/
 *.swp
 *.swo
 *~
+
+# SO/Editor
+Thumbs.db
+ehthumbs.db
+.Spotlight-V100
+.Trashes
+*.orig

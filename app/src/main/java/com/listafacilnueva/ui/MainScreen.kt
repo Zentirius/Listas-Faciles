@@ -14,7 +14,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Search     
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,13 +26,16 @@ import androidx.compose.ui.unit.sp
 import com.listafacilnueva.model.Producto
 import com.listafacilnueva.parser.QuantityParser
 import com.listafacilnueva.ocr.CameraOCRScreen
-
-private val compose: Any
+import com.listafacilnueva.AppConfig
+import com.listafacilnueva.PerformanceConfig
+import kotlinx.coroutines.delay
+import android.util.Log
 
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier
 ) {
+    // ✅ OPTIMIZADO: Estados agrupados por funcionalidad
     var inputText by remember { mutableStateOf("") }
     var searchText by remember { mutableStateOf("") }
     var productos by remember { mutableStateOf(listOf<Producto>()) }
@@ -41,18 +44,55 @@ fun MainScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showOCRScreen by remember { mutableStateOf(false) }
     
+    // Estados de cámara y errores
+    var cameraEnabled by remember { mutableStateOf(AppConfig.CAMERA_OCR_ENABLED) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showErrorDialog by remember { mutableStateOf(false) }
 
+    // ✅ OPTIMIZADO: Debounce para búsqueda
+    var debouncedSearchText by remember { mutableStateOf("") }
+    
+    LaunchedEffect(searchText) {
+        delay(PerformanceConfig.UI.DEBOUNCE_BUSQUEDA_MS)
+        debouncedSearchText = searchText
+    }
+
+    // ✅ OPTIMIZADO: Estados derivados para evitar recálculos
+    val filteredProducts = remember(productos, debouncedSearchText) {
+        if (debouncedSearchText.isBlank()) {
+            productos.take(PerformanceConfig.UI.MAX_PRODUCTOS_EN_LISTA)
+        } else {
+            productos.filter { 
+                it.nombre.contains(debouncedSearchText, ignoreCase = true) ||
+                it.nota?.contains(debouncedSearchText, ignoreCase = true) == true ||
+                it.marcas.any { marca -> marca.contains(debouncedSearchText, ignoreCase = true) }
+            }.take(PerformanceConfig.UI.MAX_BUSQUEDA_RESULTADOS)
+        }
+    }
+    
+    val lista = remember(filteredProducts, invertido) {
+        if (invertido) filteredProducts.reversed() else filteredProducts
+    }
+
+    // ✅ OPTIMIZADO: Función para actualizar producto sin recrear toda la lista
+    val updateProducto = remember { { productoToUpdate: Producto, isChecked: Boolean ->
+        productos = productos.map { 
+            if (it == productoToUpdate) it.copy(isChecked = isChecked) else it 
+        }
+    }}
 
     Scaffold(
         floatingActionButton = {
-            // Solo mostrar el botón flotante cuando NO esté abierta la pantalla OCR
-            if (!showOCRScreen) {
+            // Solo mostrar el botón flotante cuando NO esté abierta la pantalla OCR y la cámara esté habilitada
+            if (!showOCRScreen && cameraEnabled) {
                 FloatingActionButton(
                     onClick = {
-                        println("📷 BOTÓN CÁMARA PRESIONADO")
-                        println("🔄 CAMBIANDO showOCRScreen a true")
-                        showOCRScreen = true
-                        println("🔍 showOCRScreen = $showOCRScreen")
+                        try {
+                            showOCRScreen = true
+                        } catch (e: Exception) {
+                            errorMessage = "Error al abrir cámara: ${e.message}"
+                            showErrorDialog = true
+                        }
                     },
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
@@ -101,20 +141,19 @@ fun MainScreen(
                         
                         Button(
                             onClick = {
-                                println("🔴 BOTÓN AGREGAR PRESIONADO")
-                                println("📝 TEXTO INPUT: '$inputText'")
-                                if (inputText.isNotBlank()) {
-                                    println("✅ TEXTO NO ESTÁ VACÍO, PARSEANDO...")
-                                    val nuevosProductos = QuantityParser.parse(inputText)
-                                    println("🧠 PRODUCTOS PARSEADOS: ${nuevosProductos.size}")
-                                    nuevosProductos.forEach { producto ->
-                                        println("   - ${producto.nombre} (${producto.cantidad} ${producto.unidad})")
+                                try {
+                                    if (inputText.isNotBlank()) {
+                                        // Activar DEBUG para ver logs del parser
+                                        QuantityParser.setDebugMode(true)
+                                        Log.d("APPCHK", "Parse manual: input='${inputText.take(120)}'")
+                                        val nuevosProductos = QuantityParser.parse(inputText)
+                                        Log.d("APPCHK", "Parse manual: productos=${nuevosProductos.size}")
+                                        productos = productos + nuevosProductos
+                                        inputText = ""
                                     }
-                                    productos = productos + nuevosProductos
-                                    println("📋 TOTAL PRODUCTOS EN LISTA: ${productos.size}")
-                                    inputText = ""
-                                } else {
-                                    println("❌ TEXTO ESTÁ VACÍO")
+                                } catch (e: Exception) {
+                                    errorMessage = "Error al procesar texto: ${e.message}"
+                                    showErrorDialog = true
                                 }
                             },
                             shape = RoundedCornerShape(12.dp)
@@ -132,15 +171,10 @@ fun MainScreen(
                         value = searchText,
                         onValueChange = { searchText = it },
                         label = { Text("Buscar productos...") },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = "Buscar"
-                            )
-                        },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = "Buscar")
+                        }
                     )
                     
                     Spacer(modifier = Modifier.height(16.dp))
@@ -242,6 +276,20 @@ fun MainScreen(
                         }
                     }
                     
+                    // Botón para habilitar/deshabilitar cámara (solo para debug)
+                    if (!cameraEnabled) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { cameraEnabled = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Habilitar Cámara")
+                        }
+                    }
+                    
                     Spacer(modifier = Modifier.height(10.dp))
                 }
             }
@@ -283,30 +331,17 @@ fun MainScreen(
                     }
                 } else {
                     // Lista de productos filtrada
-                    val filteredProducts = if (searchText.isBlank()) {
-                        productos
-                    } else {
-                        productos.filter { 
-                            it.nombre.contains(searchText, ignoreCase = true) ||
-                            it.nota?.contains(searchText, ignoreCase = true) == true ||
-                            it.marcas.any { marca -> marca.contains(searchText, ignoreCase = true) }
-                        }
-                    }
-                    
-                    val lista = if (invertido) filteredProducts.reversed() else filteredProducts
-                    
                     LazyColumn(
                         modifier = Modifier.padding(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(lista) { producto ->
+                        items(
+                            items = lista.take(PerformanceConfig.UI.MAX_ITEMS_LAZY_COLUMN), // ✅ LÍMITE DE SEGURIDAD
+                            key = { producto -> "${producto.nombre}_${producto.cantidad}" } // ✅ KEY OPTIMIZADA
+                        ) { producto ->
                             ProductItem(
                                 producto = producto,
-                                onCheckedChange = { isChecked ->
-                                    productos = productos.map { 
-                                        if (it == producto) it.copy(isChecked = isChecked) else it 
-                                    }
-                                },
+                                onCheckedChange = { isChecked -> updateProducto(producto, isChecked) },
                                 onEdit = { productoAEditar = producto }
                             )
                         }
@@ -354,26 +389,38 @@ fun MainScreen(
         )
     }
     
+    // Diálogo de error
+    if (showErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showErrorDialog = false },
+            title = { Text("Error") },
+            text = { Text(errorMessage ?: "Error desconocido") },
+            confirmButton = {
+                TextButton(
+                    onClick = { 
+                        showErrorDialog = false
+                        errorMessage = null
+                    }
+                ) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+    
     // Pantalla de OCR
     if (showOCRScreen) {
-        println("📱 MOSTRANDO PANTALLA OCR")
         CameraOCRScreen(
             onTextRecognized = { recognizedText ->
-                // DEBUG: Imprimir texto reconocido
-                println("🔤 OCR DETECTÓ: '$recognizedText'")
-                
-                // Procesar el texto reconocido con el parser
+                // Activar DEBUG para ver logs del parser (OCR)
+                QuantityParser.setDebugMode(true)
+                Log.d("APPCHK", "Parse OCR: input='${recognizedText.take(120)}'")
                 val nuevosProductos = QuantityParser.parse(recognizedText)
-                println("🧠 PARSER GENERÓ: ${nuevosProductos.size} productos")
-                nuevosProductos.forEach { producto ->
-                    println("   - ${producto.nombre} (${producto.cantidad} ${producto.unidad})")
-                }
-                
+                Log.d("APPCHK", "Parse OCR: productos=${nuevosProductos.size}")
                 productos = productos + nuevosProductos
                 showOCRScreen = false
             },
             onBack = {
-                println("🔙 CERRANDO PANTALLA OCR")
                 showOCRScreen = false
             }
         )

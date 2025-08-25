@@ -1,66 +1,110 @@
 package com.listafacilnueva.parser
 
+/**
+ * 🛠️ UTILIDADES DEL PARSER
+ * 
+ * Funciones auxiliares y utilidades para el procesamiento
+ * de texto y validación de unidades.
+ */
 object ParserUtils {
-    val palabrasNumericas = mapOf(
-        "uno" to 1, "una" to 1, "dos" to 2, "tres" to 3, "cuatro" to 4,
-        "cinco" to 5, "seis" to 6, "siete" to 7, "ocho" to 8, "nueve" to 9, "diez" to 10,
-        "media docena" to 6, "una docena" to 12, "medio kilo" to 0.5, "un cuarto" to 0.25
-    )
 
+    /**
+     * 📏 UNIDADES CONOCIDAS
+     */
     val unidades = setOf(
-        "kg", "kilo", "kilos", "g", "gr", "gramo", "gramos", 
-        "litro", "litros", "l", "lt", "ml", "mililitro", "mililitros",
-        "malla", "mallas", "bolsa", "bolsas", "bola", "bolas",
-        "unidad", "unidades", "u", "un", "ud", "cc", 
-        "paquete", "paquetes", "docena", "docenas", 
-        "lata", "latas", "metro", "metros", "m"
+        // peso
+        "kg", "kilogramos", "kilogramo", "kilos", "kilo", "kgs",
+        "g", "gramos", "gramo", "gr", "grs",
+        // volumen
+        "l", "litros", "litro", "lt", "lts",
+        "ml", "mililitros", "mililitro",
+        // longitud
+        "m", "metros", "metro", "mtr", "mtrs",
+        "cm", "centimetros", "centímetros", "centimetro", "centímetro",
+        "mm", "milimetros", "milímetros", "milimetro", "milímetro",
+        // envases
+        "bolsa", "bolsas", "paquete", "paquetes", "pack", "packs", "paq", "paq.", "pqt",
+        // unidades
+        "unidad", "unidades", "ud", "uds",
+        // otros
+        "docena", "docenas", "doc",
+        "media", "medio",
+        "cuarto", "cuartos",
+        "mitad", "mitades",
+        "malla", "mallas",
+        // otros posibles
+        "cc"
     )
 
-    // Función mejorada para detectar unidades con plurales
+    /**
+     * 🏷️ MARCAS CONOCIDAS
+     */
+    val marcasConocidas = setOf(
+        "colgate", "sensodyne", "parodontax", "hershey's", "borges", "modena",
+        "centrum", "kirkland", "frutos del maipo", "minuto verde", "chef",
+        "yemita", "hershey"
+    )
+
+    /**
+     * 🔢 PALABRAS NUMÉRICAS
+     */
+    val palabrasNumericas = mapOf(
+        "medio" to 0.5, "media" to 0.5,
+        "un" to 1.0, "una" to 1.0, "uno" to 1.0,
+        "dos" to 2.0, "tres" to 3.0, "cuatro" to 4.0, "cinco" to 5.0,
+        "seis" to 6.0, "siete" to 7.0, "ocho" to 8.0, "nueve" to 9.0, "diez" to 10.0,
+        "once" to 11.0, "doce" to 12.0, "trece" to 13.0, "catorce" to 14.0, "quince" to 15.0,
+        "dieciséis" to 16.0, "diecisiete" to 17.0, "dieciocho" to 18.0, "diecinueve" to 19.0, 
+        "veinte" to 20.0, "veintiuno" to 21.0, "veintidós" to 22.0, "veintitrés" to 23.0,
+        "media docena" to 6.0, "una docena" to 12.0, "medio kilo" to 0.5, "un cuarto" to 0.25
+    )
+
+    /**
+     * ✅ VALIDADOR DE UNIDADES CONOCIDAS
+     */
     fun esUnidadConocida(unidad: String): Boolean {
-        val base = unidad.lowercase().removeSuffix("s")
-        val unidadesBase = setOf(
-            "kg", "kilo", "gr", "gramo", "litro", "lt", "ml", "mililitro",
-            "malla", "bolsa", "bola", "unidad", "un", "ud", "paquete", 
-            "docena", "lata", "metro", "m"
-        )
-        return base in unidadesBase || unidad.lowercase() in unidades
+        return unidades.contains(unidad.lowercase())
     }
 
-    val palabrasIrrelevantes = setOf(
-        "de", "del", "la", "las", "el", "los", "un", "una", "unos", "unas",
-        "y", "o", "con", "sin", "para", "por", "a",
-        "comprar", "lista", "supermercado", "super", "mandado",
-        "favor", "anotar", "apuntar", "recordar",
-        "marca", "tipo", "clase", "oferta", "promo",
-        "si", "hay", "cuando", "puedas", "despues"
-    )
-
+    /**
+     * 🔧 NORMALIZADOR DE UNIDADES
+     */
     fun normalizarUnidad(unidad: String): String {
-        return when (unidad.lowercase().removeSuffix("s")) {
-            "bolsa", "bolsas" -> "bolsa"  
-            "bola", "bolas" -> "bolsa"     
-            "metros", "metro" -> "m"
-            "litros", "litro" -> "lt"
-            "kilos", "kilo" -> "kg"
-            "gramos", "gramo", "gr" -> "gr"
-            "lata", "latas" -> "lata"
-            "paquete", "paquetes" -> "paquete"
-            "caja", "cajas" -> "caja"
+        return when (unidad.lowercase()) {
+            "kg", "kilogramos", "kilogramo", "kilos", "kilo", "kgs" -> "kg"
+            "g", "gramos", "gramo", "gr", "grs" -> "g"
+            "l", "litros", "litro", "lt", "lts" -> "l"
+            "ml", "mililitros", "mililitro" -> "ml"
+            "m", "metros", "metro", "mtr", "mtrs" -> "m"
+            "cm", "centimetros", "centímetros", "centimetro", "centímetro" -> "cm"
+            "mm", "milimetros", "milímetros", "milimetro", "milímetro" -> "mm"
+            "bolsa", "bolsas" -> "bolsa"
+            "paquete", "paquetes", "pack", "packs", "paq", "paq.", "pqt" -> "paquete"
+            "unidad", "unidades", "ud", "uds" -> "unidad"
+            "docena", "docenas", "doc" -> "docena"
+            "media", "medio" -> "medio"
+            "cuarto", "cuartos" -> "cuarto"
+            "mitad", "mitades" -> "mitad"
             "malla", "mallas" -> "malla"
-            "docena", "docenas" -> "docena"
-            "tubo", "tubos" -> "tubo"
-            "rollo", "rollos" -> "rollo"
-            else -> unidad.lowercase().removeSuffix("s")
+            "cc" -> "cc"
+            else -> unidad.lowercase()
         }
     }
 
-    fun esNumero(s: String): Boolean {
-        return s.trim().replace(',', '.').toDoubleOrNull() != null
+    /**
+     * 🔢 NORMALIZADOR DE NÚMEROS EN PALABRAS
+     */
+    fun normalizarNumeros(texto: String): String {
+        var resultado = texto
+        
+        // CORRECCIÓN ESPECÍFICA: "media docena" = 6
+        resultado = resultado.replace(Regex("\\bmedia\\s+docena\\b", RegexOption.IGNORE_CASE), "6")
+        
+        // Aplicar otras normalizaciones
+        for ((palabra, numero) in palabrasNumericas) {
+            resultado = resultado.replace(Regex("\\b$palabra\\b", RegexOption.IGNORE_CASE), numero.toString())
+        }
+        
+        return resultado
     }
-
-    // Marcas conocidas para nunca crear productos independientes con estos nombres
-    val marcasConocidas = setOf(
-        "minuto", "minuto verde", "frutos del maipo", "frutos", "maipo", "colun", "soprole", "nestle", "watts", "quillayes", "loncoleche", "parmalat", "regimel", "san jorge", "super pollo", "ariztia", "pf", "costa", "evercrisp", "lays", "marinela", "ideal", "bimbo", "marraqueta", "tía rosa", "maruchan", "maggi", "carozzi", "lucchetti", "trattoria", "luchetti", "carrefour", "jumbo", "lider", "santa isabel", "unimarc", "tottus", "acuenta", "marcas blancas", "marcablanca", "marca blanca"
-    )
 }
